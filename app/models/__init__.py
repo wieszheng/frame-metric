@@ -6,3 +6,6 @@
 @Time    : 2025/11/26 23:31
 @Software: PyCharm
 """
+from app.models.video import Video, Frame, BatchUpload
+
+__all__ = ["Video", "Frame", "BatchUpload"]
