@@ -52,3 +52,5 @@ uvicorn==0.38.0
 vine==5.1.0
 wcwidth==0.2.14
 loguru==0.7.3
+amzqr==0.0.1
+pillow==12.0.0
