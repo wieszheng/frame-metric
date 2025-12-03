@@ -12,11 +12,13 @@ import tempfile
 from io import BytesIO
 from typing import Optional
 
+from PIL import Image
 from fastapi import APIRouter, HTTPException, Form, File, UploadFile
 from amzqr import amzqr
 from loguru import logger
 from pydantic import BaseModel, Field
-from starlette.responses import StreamingResponse
+
+from app.services.minio_service import minio_service
 
 router = APIRouter()
 
@@ -35,7 +37,18 @@ class QRCodeRequest(BaseModel):
                                         description="亮度，0.1-3.0")
 
 
-@router.post("/simple")
+class QRCodeResponse(BaseModel):
+    """二维码生成响应模型"""
+    success: bool
+    message: str
+    object_name: str
+    url: str
+    version: Optional[int] = None
+    level: Optional[str] = None
+    file_size: Optional[int] = None
+
+
+@router.post("/simple", response_model=QRCodeResponse)
 async def generate_simple_qr(request: QRCodeRequest):
     """
     生成普通二维码，直接返回图片流
@@ -65,22 +78,29 @@ async def generate_simple_qr(request: QRCodeRequest):
             save_dir=temp_dir
         )
 
-        # 读取生成的文件到内存
+        # 读取生成的文件
         with open(output_file, "rb") as f:
-            image_data = BytesIO(f.read())
+            qr_data = f.read()
 
-        # 返回图片流
-        return StreamingResponse(
-            image_data,
-            media_type="image/png",
-            headers={
-                "Content-Disposition": "inline; filename=qrcode.png",
-                "X-QR-Version": str(version),
-                "X-QR-Level": level
-            }
+        # 上传到MinIO
+        object_name, url = minio_service.upload_qrcode(
+            qr_data=qr_data,
+            qr_type="simple",
+            file_extension="png"
+        )
+
+        return QRCodeResponse(
+            success=True,
+            message="二维码生成成功并已上传",
+            object_name=object_name,
+            url=url,
+            version=version,
+            level=level,
+            file_size=len(qr_data)
         )
 
     except Exception as e:
+        logger.error(f"Generate simple QR error: {e}")
         raise HTTPException(status_code=500, detail=f"生成二维码失败: {str(e)}")
 
     finally:
@@ -144,26 +164,31 @@ async def generate_artistic_qr(
             save_dir=temp_dir
         )
 
-        # 读取生成的文件到内存
+        # 读取生成的文件
         with open(output_file, "rb") as f:
-            image_data = BytesIO(f.read())
+            qr_data = f.read()
 
-        # 返回图片流
-        return StreamingResponse(
-            image_data,
-            media_type="image/png",
-            headers={
-                "Content-Disposition": "inline; filename=qrcode_artistic.png",
-                "X-QR-Version": str(version_result),
-                "X-QR-Level": level_result,
-                "X-QR-Colorized": str(colorized)
-            }
+        # 上传到MinIO
+        object_name, url = minio_service.upload_qrcode(
+            qr_data=qr_data,
+            qr_type="artistic",
+            file_extension="png"
+        )
+
+        return QRCodeResponse(
+            success=True,
+            message="艺术二维码生成成功并已上传",
+            object_name=object_name,
+            url=url,
+            version=version_result,
+            level=level_result,
+            file_size=len(qr_data)
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"生成艺术二维码失败: {str(e)}")
+        logger.error(f"Generate artistic QR error: {e}")
         raise HTTPException(status_code=500,
                             detail=f"生成艺术二维码失败: {str(e)}")
 
@@ -173,7 +198,7 @@ async def generate_artistic_qr(
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-@router.post("/animated")
+@router.post("/animated", response_model=QRCodeResponse)
 async def generate_animated_qr(
         words: str = Form(..., description="要编码的文本内容", min_length=1),
         gif_file: UploadFile = File(..., description="GIF动画文件"),
@@ -226,25 +251,66 @@ async def generate_animated_qr(
             save_dir=temp_dir
         )
 
-        # 读取生成的文件到内存
-        with open(output_file, "rb") as f:
-            image_data = BytesIO(f.read())
+        # 使用 Pillow 重新保存 GIF，确保无限循环
+        final_output = os.path.join(temp_dir, "qr_final.gif")
+        try:
+            img = Image.open(output_file)
+            frames = []
+            durations = []
 
-        # 返回GIF流
-        return StreamingResponse(
-            image_data,
-            media_type="image/gif",
-            headers={
-                "Content-Disposition": "inline; filename=qrcode_animated.gif",
-                "X-QR-Version": str(version_result),
-                "X-QR-Level": level_result,
-                "X-QR-Colorized": str(colorized)
-            }
+            # 提取所有帧和持续时间
+            try:
+                while True:
+                    frames.append(img.copy())
+                    durations.append(img.info.get('duration', 100))
+                    img.seek(img.tell() + 1)
+            except EOFError:
+                pass
+
+            # 保存为无限循环的 GIF
+            if frames:
+                frames[0].save(
+                    final_output,
+                    save_all=True,
+                    append_images=frames[1:],
+                    duration=durations,
+                    loop=0,  # 0 表示无限循环
+                    optimize=False
+                )
+                logger.info(f"GIF 已设置为无限循环，共 {len(frames)} 帧")
+            else:
+                # 如果提取帧失败，使用原文件
+                shutil.copy(output_file, final_output)
+                logger.warning("无法提取 GIF 帧，使用原文件")
+        except Exception as e:
+            logger.warning(f"处理 GIF 循环失败: {e}，使用原文件")
+            shutil.copy(output_file, final_output)
+
+        # 读取最终文件
+        with open(final_output, "rb") as f:
+            qr_data = f.read()
+
+        # 上传到MinIO
+        object_name, url = minio_service.upload_qrcode(
+            qr_data=qr_data,
+            qr_type="animated",
+            file_extension="gif"
+        )
+
+        return QRCodeResponse(
+            success=True,
+            message="动态二维码生成成功并已上传（无限循环）",
+            object_name=object_name,
+            url=url,
+            version=version_result,
+            level=level_result,
+            file_size=len(qr_data)
         )
 
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Generate animated QR error: {e}")
         raise HTTPException(status_code=500,
                             detail=f"生成动态二维码失败: {str(e)}")
 

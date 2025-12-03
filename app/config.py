@@ -37,7 +37,13 @@ def find_env_file(start_path: Optional[Path] = None) -> Path:
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=find_env_file())
+
+    model_config = SettingsConfigDict(
+        env_file=find_env_file(),
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore"
+    )
     # 应用信息
     APP_NAME: str = "frame-metric"
     DEBUG: bool = False

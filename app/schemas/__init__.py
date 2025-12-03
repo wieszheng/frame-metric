@@ -13,7 +13,11 @@ from app.schemas.video import (
     BatchStatusResponse,
     TaskProgress,
     CancelTaskResponse,
-    FrameResponse
+    FrameResponse,
+    FrameDetailResponse,
+    VideoReviewResponse,
+    FrameMarkingRequest,
+    FrameMarkingResponse
 )
 
 __all__ = [
@@ -23,5 +27,9 @@ __all__ = [
     "BatchStatusResponse",
     "TaskProgress",
     "CancelTaskResponse",
-    "FrameResponse"
+    "FrameResponse",
+    "FrameDetailResponse",
+    "VideoReviewResponse",
+    "FrameMarkingRequest",
+    "FrameMarkingResponse"
 ]

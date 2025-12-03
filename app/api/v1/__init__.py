@@ -7,11 +7,13 @@
 @Software: PyCharm
 """
 from fastapi import APIRouter
-from app.api.v1 import video
+from app.api.v1 import video, task, review
 from app.api.v1 import amazing_qr
 
 api_router = APIRouter()
 
 # 注册子路由
 api_router.include_router(video.router, prefix="/video", tags=["video"])
-api_router.include_router(amazing_qr.router, prefix="/qr", tags=["QR Code"])
+api_router.include_router(amazing_qr.router, prefix="/qr", tags=["qr code"])
+api_router.include_router(review.router, prefix="/review", tags=["review"])
+api_router.include_router(task.router, prefix="/task", tags=["task"])  # 新增

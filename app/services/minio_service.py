@@ -7,6 +7,8 @@
 @Software: PyCharm
 """
 import json
+import uuid
+from datetime import datetime
 
 from minio import Minio
 from minio.error import S3Error
@@ -192,6 +194,61 @@ class MinIOService:
 
         except S3Error as e:
             logger.error(f"Get object URL error: {e}")
+            raise
+
+    def upload_qrcode(
+            self,
+            qr_data: bytes,
+            qr_type: str,
+            file_extension: str = "png"
+    ) -> tuple[str, str]:
+        """
+        上传二维码到MinIO
+
+        Args:
+            qr_data: 二维码字节数据
+            qr_type: 二维码类型(simple/artistic/animated)
+            file_extension: 文件扩展名
+
+        Returns:
+            tuple[str, str]: (对象名称, 访问URL)
+        """
+        try:
+            # 生成唯一的对象名称
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            unique_id = str(uuid.uuid4())[:8]
+            object_name = f"qrcodes/{qr_type}/{timestamp}_{unique_id}.{file_extension}"
+
+            # 确定内容类型
+            content_type_map = {
+                'png': 'image/png',
+                'jpg': 'image/jpeg',
+                'jpeg': 'image/jpeg',
+                'bmp': 'image/bmp',
+                'gif': 'image/gif'
+            }
+            content_type = content_type_map.get(file_extension,
+                                                'application/octet-stream')
+
+            # 上传到MinIO
+            self.client.put_object(
+                bucket_name=settings.MINIO_BUCKET,
+                object_name=object_name,
+                data=io.BytesIO(qr_data),
+                length=len(qr_data),
+                content_type=content_type
+            )
+
+            # 生成访问URL
+            url = f"http://{settings.MINIO_ENDPOINT}/{settings.MINIO_BUCKET}/{object_name}"
+
+            logger.info(
+                f"Uploaded QR code: {object_name}, size: {len(qr_data)} bytes")
+
+            return object_name, url
+
+        except S3Error as e:
+            logger.error(f"Upload QR code error: {e}")
             raise
 
 
