@@ -337,71 +337,85 @@ class FrameAnalyzer:
 
         return min(confidence, 1.0)
 
+    def _validate_scene_scores(self, scene_scores: List) -> List[float]:
+        """
+        验证并清理 scene_scores 数据
+
+        Returns:
+            清理后的 float 列表
+        """
+        validated = []
+
+        for i, score in enumerate(scene_scores):
+            try:
+                # 尝试转换为 float
+                float_score = float(score)
+
+                # 检查是否为有效数字
+                if np.isnan(float_score) or np.isinf(float_score):
+                    logger.warning(
+                        f"场景分数无效 frame={i}: {score} (NaN/Inf), 使用 0.0")
+                    validated.append(0.0)
+                else:
+                    validated.append(float_score)
+
+            except (ValueError, TypeError) as e:
+                logger.error(
+                    f"场景分数转换失败 frame={i}: {score} ({type(score).__name__}), 错误: {e}")
+                validated.append(0.0)  # 使用默认值
+
+        logger.info(
+            f"场景分数验证完成: 总数={len(scene_scores)}, 有效={len(validated)}")
+        return validated
+
+    def _safe_get_score(self, scene_scores: List[float], index: int) -> float:
+        """安全获取场景分数"""
+        if 0 <= index < len(scene_scores):
+            return scene_scores[index]
+        return 0.0
+
     def get_candidate_frames(
             self,
             frames_info: List[Dict],
-            scene_scores: List[float],
+            scene_scores: List,
             frame_type: str = 'first',
             top_k: int = 5
     ) -> List[Tuple[int, float]]:
         """
         获取候选帧列表 - 全视频范围搜索
 
-        Args:
-        frames_info: 帧信息
-        scene_scores: 场景分数
-        frame_type: 'first'
-        或
-        'last'
-        top_k: 返回前k个候选
-
-
-        Returns:
-        List[(frame_idx, score)]: 候选帧列表
         """
+        # 验证 scene_scores
+        validated_scores = self._validate_scene_scores(scene_scores)
+
         candidates = []
 
         if frame_type == 'first':
-            # 首帧候选：全视频搜索有显著变化的点
             for i in range(2, len(frames_info) - 10):
-                if i >= len(scene_scores):
-                    continue
+                change_score = self._safe_get_score(validated_scores, i)
 
-                # 检查场景变化
-                change_score = scene_scores[i] if i < len(scene_scores) else 0
                 if change_score < self.config['first_min_change']:
                     continue
 
-                # 计算质量
                 quality = self._calculate_frame_quality(frames_info[i])
-
-                # 综合得分
                 score = change_score * 0.6 + quality * 0.4
                 candidates.append((i, score))
 
         else:  # last
-            # 尾帧候选：全视频搜索稳定的点
             for i in range(10, len(frames_info) - 2):
-                if i >= len(scene_scores):
-                    continue
-
-                # 检查稳定性（当前及后续几帧）
                 stable_count = 0
-                for j in range(i, min(i + 5, len(scene_scores))):
-                    if scene_scores[j] < self.config['last_max_change']:
+                for j in range(i, min(i + 5, len(validated_scores))):
+                    if self._safe_get_score(validated_scores, j) < self.config[
+                        'last_max_change']:
                         stable_count += 1
 
                 if stable_count < 3:
                     continue
 
-                # 计算质量
                 quality = self._calculate_frame_quality(frames_info[i])
-
-                # 综合得分
                 stability_score = stable_count / 5
                 score = stability_score * 0.5 + quality * 0.5
                 candidates.append((i, score))
 
-        # 排序并返回top_k
         candidates.sort(key=lambda x: x[1], reverse=True)
         return candidates[:top_k]

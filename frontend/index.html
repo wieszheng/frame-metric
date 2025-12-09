@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频帧提取标注系统 - Frame Metric</title>
+    <meta name="description" content="专业的视频帧提取与标注管理系统，支持批量上传、实时进度追踪和智能帧分析">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round" />
+                        <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round" />
+                        <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round" />
+                    </svg>
+                    <h1>Frame Metric</h1>
+                </div>
+                <nav class="nav">
+                    <button class="nav-btn active" data-view="tasks">
+                        <svg viewBox="0 0 24 24" fill="none">
+                            <path
+                                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                                stroke="currentColor" stroke-width="2" />
+                        </svg>
+                        任务管理
+                    </button>
+                    <button class="nav-btn" data-view="videos">
+                        <svg viewBox="0 0 24 24" fill="none">
+                            <path
+                                d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                                stroke="currentColor" stroke-width="2" />
+                        </svg>
+                        视频列表
+                    </button>
+                    <button class="nav-btn" data-view="review">
+                        <svg viewBox="0 0 24 24" fill="none">
+                            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor"
+                                stroke-width="2" />
+                        </svg>
+                        待审核
+                    </button>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+        <div class="workspace">
+            <!-- Left Sidebar -->
+            <aside class="sidebar">
+                <!-- Task Selection Section -->
+                <div class="sidebar-section">
+                    <div class="sidebar-header">
+                        <h3 class="sidebar-title">任务列表</h3>
+                        <button class="btn-icon" id="create-task-btn" title="创建任务">
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <path d="M12 4v16m8-8H4" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="task-selector" id="task-selector">
+                        <!-- Tasks will be loaded here -->
+                    </div>
+                </div>
+
+                <!-- Video List Section -->
+                <div class="sidebar-section">
+                    <div class="sidebar-header">
+                        <h3 class="sidebar-title">视频列表</h3>
+                        <button class="btn-icon" id="upload-video-btn" title="上传视频">
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <path
+                                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="video-list" id="video-list">
+                        <!-- Videos will be loaded here -->
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Content Area -->
+            <div class="content-area">
+                <!-- Content Header -->
+                <div class="content-header">
+                    <div class="content-header-info">
+                        <h2 class="content-title" id="content-title">选择视频查看帧数据</h2>
+                        <p class="content-subtitle" id="content-subtitle">从左侧选择任务和视频</p>
+                    </div>
+                    <div class="content-actions" id="content-actions">
+                        <!-- Action buttons will be added here -->
+                    </div>
+                </div>
+
+                <!-- Frame Display Area -->
+                <div class="frame-display" id="frame-display">
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none">
+                            <path
+                                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                                stroke="currentColor" stroke-width="2" />
+                        </svg>
+                        <h3>暂无帧数据</h3>
+                        <p>请从左侧选择一个视频来查看其帧数据</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Create Task Modal -->
+    <div class="modal" id="create-task-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>创建新任务</h3>
+                <button class="modal-close">
+                    <svg viewBox="0 0 24 24" fill="none">
+                        <path d="M6 18L18 6M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                    </svg>
+                </button>
+            </div>
+            <form id="create-task-form">
+                <div class="form-group">
+                    <label for="task-name">任务名称 *</label>
+                    <input type="text" id="task-name" required placeholder="输入任务名称">
+                </div>
+                <div class="form-group">
+                    <label for="task-description">任务描述</label>
+                    <textarea id="task-description" rows="4" placeholder="输入任务描述（可选）"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="task-creator">创建者 *</label>
+                    <input type="text" id="task-creator" required placeholder="输入创建者名称">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary modal-close">取消</button>
+                    <button type="submit" class="btn btn-primary">创建任务</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Upload Video Modal -->
+    <div class="modal" id="upload-video-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>上传视频</h3>
+                <button class="modal-close">
+                    <svg viewBox="0 0 24 24" fill="none">
+                        <path d="M6 18L18 6M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                    </svg>
+                </button>
+            </div>
+            <form id="upload-video-form">
+                <div class="form-group">
+                    <label>上传模式</label>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="upload-mode" value="single" checked>
+                            <span>单个上传</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="upload-mode" value="batch">
+                            <span>批量上传</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="video-files">选择视频文件 *</label>
+                    <div class="file-upload-area" id="file-upload-area">
+                        <input type="file" id="video-files" accept="video/*" hidden>
+                        <div class="file-upload-placeholder">
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <path
+                                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round" />
+                            </svg>
+                            <p>点击或拖拽视频文件到此处</p>
+                            <span>支持 MP4, AVI, MOV 等格式</span>
+                        </div>
+                        <div class="file-list" id="file-list"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary modal-close">取消</button>
+                    <button type="submit" class="btn btn-primary" id="upload-submit-btn">开始上传</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Review Modal -->
+    <div class="modal modal-large" id="review-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>视频帧审核</h3>
+                <button class="modal-close">
+                    <svg viewBox="0 0 24 24" fill="none">
+                        <path d="M6 18L18 6M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                    </svg>
+                </button>
+            </div>
+            <div class="review-content" id="review-content">
+                <!-- Review content will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Task Detail Modal -->
+    <div class="modal modal-large" id="task-detail-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>任务详情</h3>
+                <button class="modal-close">
+                    <svg viewBox="0 0 24 24" fill="none">
+                        <path d="M6 18L18 6M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                    </svg>
+                </button>
+            </div>
+            <div class="task-detail-content" id="task-detail-content">
+                <!-- Task detail content will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
