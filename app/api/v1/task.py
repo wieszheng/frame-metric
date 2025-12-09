@@ -323,7 +323,7 @@ async def get_task_statistics(
 
     for tv in task.videos:
         video = tv.video
-        if video.status == VideoStatus.PROCESSING:
+        if video.status == VideoStatus.PENDING_REVIEW:
             processing_count += 1
         if video.extracted_frames:
             total_frames += video.extracted_frames

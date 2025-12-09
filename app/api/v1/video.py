@@ -222,7 +222,9 @@ async def get_video_status(
         raise HTTPException(status_code=404, detail="视频不存在")
 
     # 获取帧信息
-    frames_stmt = select(Frame).where(Frame.video_id == video_id)
+    frames_stmt = select(Frame).where(Frame.video_id == video_id).order_by(
+        Frame.frame_number.asc()
+    )
     frames_result = await db.execute(frames_stmt)
     frames = frames_result.scalars().all()
 
