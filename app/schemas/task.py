@@ -13,46 +13,105 @@ from datetime import datetime
 
 class TaskCreate(BaseModel):
     """创建任务请求"""
-    name: str = Field(..., min_length=1, max_length=200, description="任务名称")
-    description: Optional[str] = Field(None, max_length=1000,
-                                       description="任务描述")
-    created_by: str = Field(..., description="创建者")
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str = Field(min_length=1, max_length=200, description="任务名称")
+    description: Optional[str] = Field(None, description="任务描述")
+    created_by: str = Field(description="创建人")
 
 
 class TaskUpdate(BaseModel):
     """更新任务请求"""
+    model_config = ConfigDict(from_attributes=True)
+
     name: Optional[str] = Field(None, min_length=1, max_length=200)
-    description: Optional[str] = Field(None, max_length=1000)
+    description: Optional[str] = None
+    status: Optional[str] = None
 
 
-class VideoAddToTask(BaseModel):
-    """添加视频到任务请求"""
-    video_ids: List[str] = Field(..., min_items=1, description="视频ID列表")
+class TaskVideoAdd(BaseModel):
+    """添加视频到任务"""
+    model_config = ConfigDict(from_attributes=True)
+
+    video_id: str = Field(description="视频ID")
     notes: Optional[str] = Field(None, description="备注")
 
 
+class TaskVideoUpdate(BaseModel):
+    """更新任务视频"""
+    model_config = ConfigDict(from_attributes=True)
+
+    first_frame_id: Optional[str] = None
+    last_frame_id: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class FrameMarkingUpdate(BaseModel):
+    """更新首尾帧标记"""
+    model_config = ConfigDict(from_attributes=True)
+
+    first_frame_id: str = Field(description="首帧ID")
+    last_frame_id: str = Field(description="尾帧ID")
+
+
 class TaskVideoDetail(BaseModel):
-    """任务中的视频详情"""
+    """任务视频详情"""
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    task_id: str
     video_id: str
-    order: int
-    duration: Optional[float] = None
-    first_frame_time: Optional[float] = None
-    last_frame_time: Optional[float] = None
-    notes: Optional[str] = None
+    sequence: int
+    duration_ms: Optional[int]
+    first_frame_id: Optional[str]
+    last_frame_id: Optional[str]
+    first_frame_timestamp: Optional[float]
+    last_frame_timestamp: Optional[float]
+    notes: Optional[str]
     added_at: datetime
 
     # 视频基本信息
     video_filename: Optional[str] = None
     video_status: Optional[str] = None
-    video_width: Optional[int] = None
-    video_height: Optional[int] = None
 
-    # 首尾帧URL
+    # 首尾帧图片URL
     first_frame_url: Optional[str] = None
     last_frame_url: Optional[str] = None
+
+    @property
+    def duration_seconds(self) -> Optional[float]:
+        """耗时（秒）"""
+        if self.duration_ms:
+            return self.duration_ms / 1000.0
+        return None
+
+
+class TaskStatistics(BaseModel):
+    """任务统计信息"""
+    model_config = ConfigDict(from_attributes=True)
+
+    total_videos: int
+    completed_videos: int
+    failed_videos: int
+    pending_videos: int
+
+    # 耗时统计
+    total_duration_ms: Optional[int]
+    avg_duration_ms: Optional[int]
+    min_duration_ms: Optional[int]
+    max_duration_ms: Optional[int]
+
+    @property
+    def total_duration_seconds(self) -> Optional[float]:
+        if self.total_duration_ms:
+            return self.total_duration_ms / 1000.0
+        return None
+
+    @property
+    def avg_duration_seconds(self) -> Optional[float]:
+        if self.avg_duration_ms:
+            return self.avg_duration_ms / 1000.0
+        return None
 
 
 class TaskResponse(BaseModel):
@@ -61,60 +120,47 @@ class TaskResponse(BaseModel):
 
     id: str
     name: str
-    description: Optional[str] = None
+    description: Optional[str]
     status: str
-    total_videos: int
-    completed_videos: int
-    failed_videos: int
-    total_duration: Optional[float] = None
-    avg_duration: Optional[float] = None
-    min_duration: Optional[float] = None
-    max_duration: Optional[float] = None
     created_by: str
     created_at: datetime
     updated_at: datetime
+    completed_at: Optional[datetime]
 
-
-class TaskDetailResponse(BaseModel):
-    """任务详情响应"""
-    model_config = ConfigDict(from_attributes=True)
-
-    id: str
-    name: str
-    description: Optional[str] = None
-    status: str
-    total_videos: int
-    completed_videos: int
-    failed_videos: int
-    total_duration: Optional[float] = None
-    avg_duration: Optional[float] = None
-    min_duration: Optional[float] = None
-    max_duration: Optional[float] = None
-    created_by: str
-    created_at: datetime
-    updated_at: datetime
+    # 统计信息
+    statistics: TaskStatistics
 
     # 视频列表
     videos: List[TaskVideoDetail] = []
 
 
-class TaskStatsResponse(BaseModel):
-    """任务统计响应"""
-    task_id: str
-    task_name: str
+class TaskListResponse(BaseModel):
+    """任务列表响应"""
+    model_config = ConfigDict(from_attributes=True)
 
-    # 视频统计
+    id: str
+    name: str
+    status: str
     total_videos: int
     completed_videos: int
-    processing_videos: int
-    failed_videos: int
+    created_by: str
+    created_at: datetime
 
-    # 性能统计
-    total_duration: Optional[float] = None
-    avg_duration: Optional[float] = None
-    min_duration: Optional[float] = None
-    max_duration: Optional[float] = None
+    # 简化的统计
+    avg_duration_ms: Optional[int]
 
-    # 帧统计
+
+class VideoFramesResponse(BaseModel):
+    """视频帧列表响应"""
+    model_config = ConfigDict(from_attributes=True)
+
+    video_id: str
     total_frames: int
-    avg_frames_per_video: Optional[float] = None
+    extracted_frames: int
+
+    # 当前标记的首尾帧
+    marked_first_frame_id: Optional[str]
+    marked_last_frame_id: Optional[str]
+
+    # 所有帧
+    frames: List[dict]  # FrameDetailResponse列表

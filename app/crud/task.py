@@ -8,12 +8,12 @@
 """
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session, selectinload, joinedload
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import select, func, and_
 
 from app.core.crud_base import CRUDBase
 from app.models.task import Task, TaskVideo, TaskStatus
-from app.models.video import Video, Frame, FrameType, VideoStatus
+from app.models.video import Video, Frame, VideoStatus, FrameType
 from pydantic import BaseModel
 
 
@@ -41,166 +41,22 @@ class TaskCRUD(CRUDBase[Task, TaskCreate, TaskUpdate]):
         stmt = (
             select(Task)
             .where(Task.id == task_id)
-            .options(
-                selectinload(Task.videos).joinedload(TaskVideo.video)
-            )
+            .options(selectinload(Task.task_videos))
         )
         result = await db.execute(stmt)
-        return result.unique().scalar_one_or_none()
+        return result.scalar_one_or_none()
 
-    async def add_videos_to_task(
+    async def get_by_status(
             self,
             db: AsyncSession,
-            task_id: str,
-            video_ids: List[str],
-            notes: Optional[str] = None
-    ) -> List[TaskVideo]:
-        """添加视频到任务"""
-        import uuid
-
-        # 获取当前任务中的最大order
-        max_order_stmt = (
-            select(func.max(TaskVideo.order))
-            .where(TaskVideo.task_id == task_id)
-        )
-        result = await db.execute(max_order_stmt)
-        max_order = result.scalar() or 0
-
-        # 创建关联记录
-        task_videos = []
-        for i, video_id in enumerate(video_ids):
-            task_video = TaskVideo(
-                id=str(uuid.uuid4()),
-                task_id=task_id,
-                video_id=video_id,
-                order=max_order + i + 1,
-                notes=notes
-            )
-            db.add(task_video)
-            task_videos.append(task_video)
-
-        await db.flush()
-
-        # 更新任务的视频数量
-        task = await self.get(db, task_id)
-        if task:
-            task.total_videos = task.total_videos + len(video_ids)
-
-        return task_videos
-
-    async def remove_video_from_task(
-            self,
-            db: AsyncSession,
-            task_id: str,
-            video_id: str
-    ) -> bool:
-        """从任务中移除视频"""
-        stmt = select(TaskVideo).where(
-            and_(
-                TaskVideo.task_id == task_id,
-                TaskVideo.video_id == video_id
-            )
-        )
-        result = await db.execute(stmt)
-        task_video = result.scalar_one_or_none()
-
-        if task_video:
-            await db.delete(task_video)
-
-            # 更新任务的视频数量
-            task = await self.get(db, task_id)
-            if task:
-                task.total_videos = max(0, task.total_videos - 1)
-
-            return True
-
-        return False
-
-    async def calculate_task_stats(
-            self,
-            db: AsyncSession,
-            task_id: str
-    ) -> None:
-        """计算任务统计信息（耗时等）"""
-        # 查询任务的所有视频及其首尾帧
-        stmt = (
-            select(TaskVideo)
-            .where(TaskVideo.task_id == task_id)
-            .options(joinedload(TaskVideo.video))
-        )
-        result = await db.execute(stmt)
-        task_videos = result.unique().scalars().all()
-
-        durations = []
-        completed_count = 0
-        failed_count = 0
-
-        for tv in task_videos:
-            video = tv.video
-
-            # 统计视频状态
-            if video.status == VideoStatus.COMPLETED:
-                completed_count += 1
-            elif video.status == VideoStatus.FAILED:
-                failed_count += 1
-
-            # 计算耗时（从首尾帧）
-            if video.status == VideoStatus.COMPLETED:
-                # 查询首尾帧
-                frames_stmt = select(Frame).where(
-                    Frame.video_id == video.id,
-                    Frame.frame_type.in_([FrameType.FIRST, FrameType.LAST])
-                )
-                frames_result = await db.execute(frames_stmt)
-                frames = frames_result.scalars().all()
-
-                first_frame = next(
-                    (f for f in frames if f.frame_type == FrameType.FIRST),
-                    None)
-                last_frame = next(
-                    (f for f in frames if f.frame_type == FrameType.LAST), None)
-
-                if first_frame and last_frame:
-                    duration = last_frame.timestamp - first_frame.timestamp
-
-                    # 更新TaskVideo的耗时信息
-                    tv.duration = duration
-                    tv.first_frame_time = first_frame.timestamp
-                    tv.last_frame_time = last_frame.timestamp
-
-                    durations.append(duration)
-
-        # 更新任务统计
-        task = await self.get(db, task_id)
-        if task:
-            task.completed_videos = completed_count
-            task.failed_videos = failed_count
-
-            if durations:
-                task.total_duration = sum(durations)
-                task.avg_duration = sum(durations) / len(durations)
-                task.min_duration = min(durations)
-                task.max_duration = max(durations)
-
-            # 更新任务状态
-            if completed_count + failed_count == task.total_videos:
-                task.status = TaskStatus.COMPLETED
-            elif completed_count > 0 or failed_count > 0:
-                task.status = TaskStatus.PROCESSING
-
-        await db.flush()
-
-    async def get_by_user(
-            self,
-            db: AsyncSession,
-            user: str,
+            status: TaskStatus,
             skip: int = 0,
-            limit: int = 20
+            limit: int = 100
     ) -> List[Task]:
-        """查询用户的所有任务"""
+        """根据状态查询任务"""
         stmt = (
             select(Task)
-            .where(Task.created_by == user)
+            .where(Task.status == status)
             .order_by(Task.created_at.desc())
             .offset(skip)
             .limit(limit)
@@ -208,6 +64,120 @@ class TaskCRUD(CRUDBase[Task, TaskCreate, TaskUpdate]):
         result = await db.execute(stmt)
         return result.scalars().all()
 
+    async def update_statistics(
+            self,
+            db: AsyncSession,
+            task_id: str
+    ):
+        """更新任务统计信息"""
+        # 查询任务的所有视频
+        stmt = select(TaskVideo).where(TaskVideo.task_id == task_id)
+        result = await db.execute(stmt)
+        task_videos = result.scalars().all()
 
-# 创建全局实例
+        # 查询任务
+        task = await self.get(db, task_id)
+        if not task:
+            return
+
+        # 统计
+        total_videos = len(task_videos)
+        completed_videos = 0
+        failed_videos = 0
+        durations = []
+
+        for tv in task_videos:
+            # 查询视频状态
+            video_stmt = select(Video).where(Video.id == tv.video_id)
+            video_result = await db.execute(video_stmt)
+            video = video_result.scalar_one_or_none()
+
+            if video:
+                if video.status == VideoStatus.REVIEWED:
+                    completed_videos += 1
+                elif video.status == VideoStatus.FAILED:
+                    failed_videos += 1
+
+            # 收集耗时
+            if tv.duration_ms:
+                durations.append(tv.duration_ms)
+
+        # 更新任务统计
+        task.total_videos = total_videos
+        task.completed_videos = completed_videos
+        task.failed_videos = failed_videos
+
+        if durations:
+            task.total_duration_ms = sum(durations)
+            task.avg_duration_ms = int(sum(durations) / len(durations))
+            task.min_duration_ms = min(durations)
+            task.max_duration_ms = max(durations)
+
+        await db.flush()
+
+
+class TaskVideoCRUD(CRUDBase[TaskVideo, BaseModel, BaseModel]):
+    """任务视频CRUD操作"""
+
+    async def get_by_task(
+            self,
+            db: AsyncSession,
+            task_id: str
+    ) -> List[TaskVideo]:
+        """查询任务的所有视频"""
+        stmt = (
+            select(TaskVideo)
+            .where(TaskVideo.task_id == task_id)
+            .order_by(TaskVideo.sequence)
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    async def add_video_to_task(
+            self,
+            db: AsyncSession,
+            task_id: str,
+            video_id: str,
+            notes: Optional[str] = None
+    ) -> TaskVideo:
+        """添加视频到任务"""
+        import uuid
+
+        # 获取当前最大sequence
+        stmt = select(func.max(TaskVideo.sequence)).where(TaskVideo.task_id == task_id)
+        result = await db.execute(stmt)
+        max_sequence = result.scalar_one_or_none() or 0
+
+        # 创建关联
+        task_video = TaskVideo(
+            id=str(uuid.uuid4()),
+            task_id=task_id,
+            video_id=video_id,
+            sequence=max_sequence + 1,
+            notes=notes
+        )
+
+        db.add(task_video)
+        await db.flush()
+
+        return task_video
+
+    async def update_duration(
+            self,
+            db: AsyncSession,
+            task_video_id: str,
+            first_frame_timestamp: float,
+            last_frame_timestamp: float
+    ):
+        """更新耗时"""
+        task_video = await self.get(db, task_video_id)
+        if task_video:
+            task_video.first_frame_timestamp = first_frame_timestamp
+            task_video.last_frame_timestamp = last_frame_timestamp
+            task_video.duration_ms = int((last_frame_timestamp - first_frame_timestamp) * 1000)
+            await db.flush()
+
+
+# 创建全局CRUD实例
 task_crud = TaskCRUD(Task)
+task_video_crud = TaskVideoCRUD(TaskVideo)
