@@ -34,3 +34,10 @@ class MarkingMethod(str, enum.Enum):
     ALGORITHM = "algorithm"  # 算法标记
     AI_MODEL = "ai_model"  # AI模型标记
     MANUAL = "manual"  # 人工标记
+
+class TaskStatus(str, enum.Enum):
+    """任务状态"""
+    DRAFT = "draft"              # 草稿
+    PROCESSING = "processing"    # 处理中
+    COMPLETED = "completed"      # 已完成
+    FAILED = "failed"           # 失败
