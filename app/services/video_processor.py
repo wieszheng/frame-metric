@@ -36,9 +36,10 @@ class VideoProcessor:
             frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            duration = frame_count / fps if fps > 0 else 0
+            duration = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps)
 
-            logger.info(f"Video info: {width}x{height}, {fps}fps, {duration:.2f}s")
+            logger.info(
+                f"Video info: {width}x{height}, {fps}fps, {duration:.2f}s")
 
             return {
                 "fps": fps,

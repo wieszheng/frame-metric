@@ -157,6 +157,9 @@ class VideoFramesResponse(BaseModel):
     video_id: str
     total_frames: int
     extracted_frames: int
+    duration:float
+    filename: str
+    fps: int
 
     # 当前标记的首尾帧
     marked_first_frame_id: Optional[str]

@@ -272,6 +272,9 @@ async def get_video_frames(
     return VideoFramesResponse(
         video_id=video.id,
         total_frames=video.total_frames or 0,
+        duration=video.duration or 0,
+        filename= video.filename,
+        fps=round(video.fps) or 0,
         extracted_frames=video.extracted_frames or 0,
         marked_first_frame_id=marked_first.id if marked_first else None,
         marked_last_frame_id=marked_last.id if marked_last else None,
@@ -344,7 +347,7 @@ async def update_frame_marking(
     task_video.last_frame_timestamp = last_frame.timestamp
 
     # 计算耗时
-    duration_ms = int((last_frame.timestamp - first_frame.timestamp) * 1000)
+    duration_ms = round((last_frame.timestamp - first_frame.timestamp))
     task_video.duration_ms = duration_ms
 
     # 更新任务统计

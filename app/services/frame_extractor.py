@@ -50,9 +50,7 @@ class FrameExtractor:
         frames_info = []
 
         try:
-            fps = cap.get(cv2.CAP_PROP_FPS)
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
             frame_number = 0
             extracted_count = 0
 
@@ -64,42 +62,48 @@ class FrameExtractor:
                 if not ret:
                     break
 
-                # 采样
-                if frame_number % self.sampling_rate == 0:
-                    timestamp = frame_number / fps if fps > 0 else 0
+                if frame_number % self.sampling_rate != 0:
+                    frame_number += 1
+                    continue
 
-                    # 编码为JPEG
-                    success, buffer = cv2.imencode('.jpg', frame,
-                                                   [cv2.IMWRITE_JPEG_QUALITY,
-                                                    85])
-                    if not success:
-                        logger.warning(f"Frame {frame_number} encoding failed")
-                        frame_number += 1
-                        continue
+                # 获取当前帧的时间戳（毫秒）
+                timestamp_ms = int(cap.get(cv2.CAP_PROP_POS_MSEC))
 
-                    frame_data = buffer.tobytes()
+                # 编码为JPEG
+                success, buffer = cv2.imencode('.jpg', frame,
+                                               [cv2.IMWRITE_JPEG_QUALITY,
+                                                85])
+                if not success:
+                    logger.warning(f"Frame {frame_number} encoding failed")
+                    frame_number += 1
+                    continue
 
-                    # 计算帧特征
-                    features = self._calculate_frame_features(frame)
+                frame_data = buffer.tobytes()
 
-                    frame_info = {
-                        'frame_number': frame_number,
-                        'timestamp': timestamp,
-                        'data': frame_data,
-                        'size': len(frame_data),
-                        **features
-                    }
+                # 计算帧特征
+                features = self._calculate_frame_features(frame)
 
-                    frames_info.append(frame_info)
+                frame_info = {
+                    'frame_number': frame_number,
+                    'timestamp': timestamp_ms,
+                    'data': frame_data,
+                    'size': len(frame_data),
+                    **features
+                }
 
-                    # 回调
-                    if output_callback:
-                        output_callback(frame_data, frame_info)
+                frames_info.append(frame_info)
 
-                    extracted_count += 1
+                # 回调
+                if output_callback:
+                    output_callback(frame_data, frame_info)
 
-                    if extracted_count % 100 == 0:
-                        logger.info(f"已提取 {extracted_count} 帧")
+                extracted_count += 1
+                if (frame_number + 1) % 100 == 0 or frame_number == 0:
+                    progress = (frame_number + 1) / total_frames * 100
+                    logger.info(
+                        f"  进度: {frame_number + 1}/{total_frames} ({progress:.1f}%)")
+
+
 
                 frame_number += 1
 

@@ -377,7 +377,6 @@ class FrameAnalyzer:
     def get_candidate_frames(
             self,
             frames_info: List[Dict],
-            scene_scores: List,
             frame_type: str = 'first',
             top_k: int = 5
     ) -> List[Tuple[int, float]]:
@@ -386,36 +385,27 @@ class FrameAnalyzer:
 
         """
         # 验证 scene_scores
-        validated_scores = self._validate_scene_scores(scene_scores)
+        scores = []
 
-        candidates = []
+        search_range = min(len(frames_info), 150)
 
         if frame_type == 'first':
-            for i in range(2, len(frames_info) - 10):
-                change_score = self._safe_get_score(validated_scores, i)
+            indices = range(search_range)
+        else:
+            indices = range(len(frames_info) - 1,
+                            max(0, len(frames_info) - search_range - 1), -1)
 
-                if change_score < self.config['first_min_change']:
-                    continue
+        for i in indices:
+            frame = frames_info[i]
 
-                quality = self._calculate_frame_quality(frames_info[i])
-                score = change_score * 0.6 + quality * 0.4
-                candidates.append((i, score))
+            # 计算分数: 亮度 + 清晰度
+            score = (
+                    frame['brightness'] / 255.0 * 0.4 +
+                    min(frame['sharpness'] / 500.0, 1.0) * 0.6
+            )
 
-        else:  # last
-            for i in range(10, len(frames_info) - 2):
-                stable_count = 0
-                for j in range(i, min(i + 5, len(validated_scores))):
-                    if self._safe_get_score(validated_scores, j) < self.config[
-                        'last_max_change']:
-                        stable_count += 1
+            scores.append((i, score))
 
-                if stable_count < 3:
-                    continue
-
-                quality = self._calculate_frame_quality(frames_info[i])
-                stability_score = stable_count / 5
-                score = stability_score * 0.5 + quality * 0.5
-                candidates.append((i, score))
-
-        candidates.sort(key=lambda x: x[1], reverse=True)
-        return candidates[:top_k]
+        # 排序并返回top_k
+        scores.sort(key=lambda x: x[1], reverse=True)
+        return scores[:top_k]
