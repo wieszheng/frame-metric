@@ -275,6 +275,8 @@ async def get_video_frames(
         duration=video.duration or 0,
         filename= video.filename,
         fps=round(video.fps) or 0,
+        width=video.width or 0,
+        height=video.height or 0,
         extracted_frames=video.extracted_frames or 0,
         marked_first_frame_id=marked_first.id if marked_first else None,
         marked_last_frame_id=marked_last.id if marked_last else None,

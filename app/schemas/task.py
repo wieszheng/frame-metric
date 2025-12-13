@@ -160,6 +160,8 @@ class VideoFramesResponse(BaseModel):
     duration:float
     filename: str
     fps: int
+    width: int
+    height: int
 
     # 当前标记的首尾帧
     marked_first_frame_id: Optional[str]

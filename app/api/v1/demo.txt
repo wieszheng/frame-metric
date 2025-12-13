@@ -422,3 +422,485 @@ async def list_videos(
             for v in videos
         ]
     }
+
+
+import cv2
+import numpy as np
+import json
+from pathlib import Path
+from datetime import datetime
+from typing import List, Dict, Tuple
+
+
+class FrameData:
+    """统一的帧数据结构"""
+    def __init__(self, frame_number: int, timestamp_ms: int):
+        self.frame_number = frame_number
+        self.timestamp_ms = timestamp_ms
+        self.timestamp_sec = round(timestamp_ms / 1000, 3)
+        self.frame_path = ""
+
+        # 检测方法和得分（按算法流程逐步添加）
+        self.detection_method = ""  # 最终确定该帧的检测方法
+        self.detection_score = 0.0   # 该方法的得分
+        self.algorithm_scores = {}   # 记录各算法的得分（用于调试）
+
+        # 状态标记
+        self.is_turning_point = False
+        self.is_start_frame = False
+        self.is_end_frame = False
+
+    def to_dict(self):
+        """转换为字典"""
+        return {
+            "frame_number": self.frame_number,
+            "timestamp_ms": self.timestamp_ms,
+            "timestamp_sec": self.timestamp_sec,
+            "frame_path": self.frame_path,
+            "detection_method": self.detection_method,
+            "detection_score": round(self.detection_score, 4),
+            "algorithm_scores": {k: round(v, 4) for k, v in self.algorithm_scores.items()},
+            "is_turning_point": self.is_turning_point,
+            "is_start_frame": self.is_start_frame,
+            "is_end_frame": self.is_end_frame
+        }
+
+
+class ProgressiveSceneAnalyzer:
+    """层进式场景分析器"""
+
+    def __init__(self, video_path: str):
+        self.video_path = video_path
+        self.cap = cv2.VideoCapture(video_path)
+
+        if not self.cap.isOpened():
+            raise ValueError(f"无法打开视频: {video_path}")
+
+        self.fps = self.cap.get(cv2.CAP_PROP_FPS)
+        self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.duration_ms = int(self.total_frames / self.fps * 1000)
+
+        # 统一的帧数据列表
+        self.frames: List[FrameData] = []
+        self.frame_images = []
+
+        # 候选转折点（在算法流程中逐步筛选）
+        self.candidate_frames: List[FrameData] = []
+
+        print(f"视频信息: FPS={self.fps}, 总帧数={self.total_frames}, 时长={self.duration_ms}ms")
+
+    def extract_all_frames(self, output_folder: str):
+        """步骤1: 提取所有帧"""
+        print(f"\n{'='*70}")
+        print("步骤1: 提取所有帧...")
+        print(f"{'='*70}")
+
+        output_folder = Path(output_folder)
+        frames_folder = output_folder / "all_frames"
+        frames_folder.mkdir(parents=True, exist_ok=True)
+
+        frame_idx = 0
+
+        while True:
+            ret, frame = self.cap.read()
+            if not ret:
+                break
+
+            timestamp_ms = int(self.cap.get(cv2.CAP_PROP_POS_MSEC))
+
+            frame_data = FrameData(frame_idx, timestamp_ms)
+            frame_filename = f"frame_{frame_idx:06d}_{timestamp_ms}ms.jpg"
+            frame_path = frames_folder / frame_filename
+            cv2.imwrite(str(frame_path), frame)
+            frame_data.frame_path = str(frame_path)
+
+            self.frames.append(frame_data)
+            self.frame_images.append(frame)
+
+            if (frame_idx + 1) % 50 == 0:
+                progress = (frame_idx + 1) / self.total_frames * 100
+                print(f"  提取进度: {frame_idx + 1}/{self.total_frames} ({progress:.1f}%)")
+
+            frame_idx += 1
+
+        print(f"✓ 提取完成! 共 {len(self.frames)} 帧")
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
+    def algorithm_1_frame_difference(self, threshold_percentile: float = 85):
+        """
+        算法1: 帧差法 - 粗筛
+        快速找出画面变化明显的候选帧
+        """
+        print(f"\n{'='*70}")
+        print("算法1: 帧差法（粗筛候选帧）...")
+        print(f"{'='*70}")
+
+        scores = []
+
+        for i in range(len(self.frame_images)):
+            if i == 0:
+                scores.append(0.0)
+                continue
+
+            frame1 = cv2.cvtColor(self.frame_images[i-1], cv2.COLOR_BGR2GRAY)
+            frame2 = cv2.cvtColor(self.frame_images[i], cv2.COLOR_BGR2GRAY)
+
+            diff = cv2.absdiff(frame1, frame2)
+            score = np.mean(diff) / 255.0
+            scores.append(score)
+
+            self.frames[i].algorithm_scores['frame_diff'] = score
+
+        # 计算阈值
+        threshold = np.percentile(scores, threshold_percentile)
+
+        # 筛选候选帧
+        self.candidate_frames = []
+        for i, score in enumerate(scores):
+            if score > threshold:
+                self.frames[i].detection_score = score
+                self.frames[i].detection_method = "frame_diff"
+                self.candidate_frames.append(self.frames[i])
+
+        avg_score = np.mean(scores)
+        print(f"  平均得分: {avg_score:.4f}")
+        print(f"  阈值(P{threshold_percentile}): {threshold:.4f}")
+        print(f"  ✓ 筛选出 {len(self.candidate_frames)} 个候选帧")
+
+        return self.candidate_frames
+
+    def algorithm_2_optical_flow(self, threshold: float = 0.3):
+        """
+        算法2: 光流法 - 精筛
+        在候选帧中进一步筛选出运动变化大的帧
+        """
+        print(f"\n{'='*70}")
+        print(f"算法2: 光流法（精筛 {len(self.candidate_frames)} 个候选帧）...")
+        print(f"{'='*70}")
+
+        refined_candidates = []
+
+        for frame_data in self.candidate_frames:
+            idx = frame_data.frame_number
+
+            if idx == 0:
+                continue
+
+            prev_gray = cv2.cvtColor(self.frame_images[idx-1], cv2.COLOR_BGR2GRAY)
+            curr_gray = cv2.cvtColor(self.frame_images[idx], cv2.COLOR_BGR2GRAY)
+
+            # 计算光流
+            flow = cv2.calcOpticalFlowFarneback(
+                prev_gray, curr_gray, None,
+                pyr_scale=0.5, levels=3, winsize=15,
+                iterations=3, poly_n=5, poly_sigma=1.2, flags=0
+            )
+
+            magnitude = np.sqrt(flow[..., 0]**2 + flow[..., 1]**2)
+            score = min(np.mean(magnitude) / 50.0, 1.0)
+
+            frame_data.algorithm_scores['optical_flow'] = score
+
+            # 如果光流得分也高，则保留
+            if score > threshold:
+                frame_data.detection_score = (frame_data.detection_score + score) / 2
+                frame_data.detection_method = "frame_diff+optical_flow"
+                refined_candidates.append(frame_data)
+                print(f"  保留: 帧{idx} ({frame_data.timestamp_ms}ms) 光流得分={score:.4f}")
+
+        self.candidate_frames = refined_candidates
+        print(f"  ✓ 精筛后剩余 {len(self.candidate_frames)} 个候选帧")
+
+        return self.candidate_frames
+
+    def algorithm_3_histogram_analysis(self, threshold: float = 0.25):
+        """
+        算法3: 直方图分析 - 验证
+        验证候选帧的颜色分布变化
+        """
+        print(f"\n{'='*70}")
+        print(f"算法3: 直方图分析（验证 {len(self.candidate_frames)} 个候选帧）...")
+        print(f"{'='*70}")
+
+        verified_candidates = []
+
+        for frame_data in self.candidate_frames:
+            idx = frame_data.frame_number
+
+            if idx == 0:
+                continue
+
+            hist1, hist2 = [], []
+
+            for channel in range(3):
+                h1 = cv2.calcHist([self.frame_images[idx-1]], [channel], None, [256], [0, 256])
+                h2 = cv2.calcHist([self.frame_images[idx]], [channel], None, [256], [0, 256])
+                cv2.normalize(h1, h1, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
+                cv2.normalize(h2, h2, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
+                hist1.append(h1)
+                hist2.append(h2)
+
+            correlations = [cv2.compareHist(hist1[c], hist2[c], cv2.HISTCMP_CORREL) for c in range(3)]
+            score = 1 - np.mean(correlations)
+
+            frame_data.algorithm_scores['histogram'] = score
+
+            # 如果直方图差异也大，则验证通过
+            if score > threshold:
+                frame_data.detection_score = (frame_data.detection_score * 2 + score) / 3
+                frame_data.detection_method += "+histogram"
+                verified_candidates.append(frame_data)
+                print(f"  验证通过: 帧{idx} ({frame_data.timestamp_ms}ms) 直方图差异={score:.4f}")
+
+        self.candidate_frames = verified_candidates
+        print(f"  ✓ 验证后剩余 {len(self.candidate_frames)} 个候选帧")
+
+        return self.candidate_frames
+
+    def algorithm_4_edge_detection(self, threshold: float = 0.2):
+        """
+        算法4: 边缘检测 - 最终确认
+        确认候选帧的结构性变化
+        """
+        print(f"\n{'='*70}")
+        print(f"算法4: 边缘检测（最终确认 {len(self.candidate_frames)} 个候选帧）...")
+        print(f"{'='*70}")
+
+        confirmed_turning_points = []
+
+        for frame_data in self.candidate_frames:
+            idx = frame_data.frame_number
+
+            if idx == 0:
+                continue
+
+            gray1 = cv2.cvtColor(self.frame_images[idx-1], cv2.COLOR_BGR2GRAY)
+            gray2 = cv2.cvtColor(self.frame_images[idx], cv2.COLOR_BGR2GRAY)
+
+            edges1 = cv2.Canny(gray1, 50, 150)
+            edges2 = cv2.Canny(gray2, 50, 150)
+
+            diff = np.sum(np.abs(edges1.astype(float) - edges2.astype(float)))
+            score = min(diff / (edges1.shape[0] * edges1.shape[1] * 255) * 5, 1.0)
+
+            frame_data.algorithm_scores['edge'] = score
+
+            # 如果边缘差异也大，则最终确认为转折点
+            if score > threshold:
+                frame_data.detection_score = (frame_data.detection_score * 3 + score) / 4
+                frame_data.detection_method += "+edge"
+                frame_data.is_turning_point = True
+                confirmed_turning_points.append(frame_data)
+                print(f"  ✓ 确认转折点: 帧{idx} ({frame_data.timestamp_ms}ms) 边缘差异={score:.4f} 综合得分={frame_data.detection_score:.4f}")
+
+        print(f"\n{'*'*70}")
+        print(f"✓ 最终确认 {len(confirmed_turning_points)} 个转折点")
+        print(f"{'*'*70}")
+
+        return confirmed_turning_points
+
+    def merge_nearby_turning_points(self, turning_points: List[FrameData],
+                                    min_interval_frames: int = 15):
+        """
+        合并相近的转折点，保留得分最高的
+        """
+        print(f"\n合并相近转折点（最小间隔{min_interval_frames}帧）...")
+
+        if not turning_points:
+            return []
+
+        # 按帧号排序
+        sorted_points = sorted(turning_points, key=lambda x: x.frame_number)
+
+        merged = []
+        current_group = [sorted_points[0]]
+
+        for i in range(1, len(sorted_points)):
+            tp = sorted_points[i]
+
+            if tp.frame_number - current_group[-1].frame_number <= min_interval_frames:
+                current_group.append(tp)
+            else:
+                # 选择得分最高的
+                best = max(current_group, key=lambda x: x.detection_score)
+                merged.append(best)
+                current_group = [tp]
+
+        # 处理最后一组
+        if current_group:
+            best = max(current_group, key=lambda x: x.detection_score)
+            merged.append(best)
+
+        print(f"  合并前: {len(turning_points)} 个")
+        print(f"  合并后: {len(merged)} 个")
+
+        return merged
+
+    def identify_best_start_end_frames(self, turning_points: List[FrameData]):
+        """
+        从转折点中找出最佳的唯一首尾帧
+        """
+        print(f"\n{'='*70}")
+        print("识别最佳首尾帧...")
+        print(f"{'='*70}")
+
+        if len(turning_points) < 1:
+            print("转折点数量不足")
+            return None, None
+
+        best_confidence = 0
+        best_start = None
+        best_end = None
+
+        for tp in turning_points:
+            idx = tp.frame_number
+
+            # 转折点前找最稳定的帧（尾帧）
+            window = 10
+            start_search = max(0, idx - window * 2)
+            end_search = idx
+
+            end_frame = None
+            min_score_before = float('inf')
+
+            for j in range(start_search, end_search):
+                # 计算稳定性（得分越低越稳定）
+                stability = self.frames[j].algorithm_scores.get('frame_diff', 0)
+                if stability < min_score_before:
+                    min_score_before = stability
+                    end_frame = self.frames[j]
+
+            # 转折点后找最稳定的帧（首帧）
+            start_search = idx + 1
+            end_search = min(len(self.frames), idx + window * 2)
+
+            start_frame = None
+            min_score_after = float('inf')
+
+            for j in range(start_search, end_search):
+                stability = self.frames[j].algorithm_scores.get('frame_diff', 0)
+                if stability < min_score_after:
+                    min_score_after = stability
+                    start_frame = self.frames[j]
+
+            if start_frame and end_frame:
+                # 置信度 = 转折点强度 × 前后稳定性
+                confidence = tp.detection_score * (1 - min_score_before) * (1 - min_score_after)
+
+                if confidence > best_confidence:
+                    best_confidence = confidence
+                    best_start = start_frame
+                    best_end = end_frame
+
+                    print(f"\n候选首尾帧组合 (置信度={confidence:.4f}):")
+                    print(f"  尾帧: 帧{end_frame.frame_number} ({end_frame.timestamp_ms}ms) 稳定性={1-min_score_before:.4f}")
+                    print(f"  转折: 帧{tp.frame_number} ({tp.timestamp_ms}ms) 强度={tp.detection_score:.4f}")
+                    print(f"  首帧: 帧{start_frame.frame_number} ({start_frame.timestamp_ms}ms) 稳定性={1-min_score_after:.4f}")
+
+        if best_end and best_start:
+            best_end.is_end_frame = True
+            best_start.is_start_frame = True
+
+            duration = best_start.timestamp_ms - best_end.timestamp_ms
+
+            print(f"\n{'*'*70}")
+            print(f"最佳首尾帧:")
+            print(f"  尾帧: 帧{best_end.frame_number} ({best_end.timestamp_ms}ms)")
+            print(f"  首帧: 帧{best_start.frame_number} ({best_start.timestamp_ms}ms)")
+            print(f"  场景时长: {duration}ms ({duration/1000:.2f}秒)")
+            print(f"  置信度: {best_confidence:.4f}")
+            print(f"{'*'*70}")
+
+        return best_start, best_end
+
+    def save_keyframes(self, output_folder: str):
+        """保存关键帧"""
+        print(f"\n保存关键帧...")
+
+        output_folder = Path(output_folder)
+        keyframes_folder = output_folder / "keyframes"
+        keyframes_folder.mkdir(parents=True, exist_ok=True)
+
+        keyframe_count = 0
+
+        for frame in self.frames:
+            should_save = frame.is_turning_point or frame.is_start_frame or frame.is_end_frame
+
+            if should_save:
+                labels = []
+                if frame.is_start_frame:
+                    labels.append("START")
+                if frame.is_end_frame:
+                    labels.append("END")
+                if frame.is_turning_point:
+                    labels.append("TURNING_POINT")
+
+                label_str = "_".join(labels)
+
+                img = self.frame_images[frame.frame_number]
+                filename = f"{label_str}_frame{frame.frame_number:06d}_{frame.timestamp_ms}ms.jpg"
+                save_path = keyframes_folder / filename
+                cv2.imwrite(str(save_path), img)
+
+                keyframe_count += 1
+
+                status_str = " | ".join(labels)
+                print(f"  {status_str}: 帧{frame.frame_number} ({frame.timestamp_ms}ms)")
+
+        print(f"✓ 共保存 {keyframe_count} 个关键帧")
+
+    def save_analysis_report(self, output_folder: str):
+        """保存分析报告"""
+        print(f"\n保存分析报告...")
+
+        turning_points = [f for f in self.frames if f.is_turning_point]
+        start_frames = [f for f in self.frames if f.is_start_frame]
+        end_frames = [f for f in self.frames if f.is_end_frame]
+
+        report = {
+            "video_info": {
+                "path": self.video_path,
+                "fps": self.fps,
+                "total_frames": self.total_frames,
+                "duration_ms": self.duration_ms
+            },
+            "algorithm_flow": {
+                "description": "层进式算法流程：帧差法(粗筛) -> 光流法(精筛) -> 直方图(验证) -> 边缘检测(确认)",
+                "stages": [
+                    "Stage 1: 帧差法 - 快速粗筛候选帧",
+                    "Stage 2: 光流法 - 精筛运动变化大的帧",
+                    "Stage 3: 直方图分析 - 验证颜色分布变化",
+                    "Stage 4: 边缘检测 - 确认结构性变化"
+                ]
+            },
+            "statistics": {
+                "total_frames": len(self.frames),
+                "turning_points_count": len(turning_points),
+                "start_frames_count": len(start_frames),
+                "end_frames_count": len(end_frames)
+            },
+            "frames": [frame.to_dict() for frame in self.frames],
+            "analysis_time": datetime.now().isoformat()
+        }
+
+        output_path = Path(output_folder) / "analysis_report.json"
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(report, f, indent=2, ensure_ascii=False)
+
+        print(f"✓ 完整报告: {output_path}")
+
+        # 关键帧报告
+        keyframes_report = {
+            "video_info": report["video_info"],
+            "algorithm_flow": report["algorithm_flow"],
+            "statistics": report["statistics"],
+            "turning_points": [f.to_dict() for f in turning_points],
+            "start_frame": start_frames[0].to_dict() if start_frames else None,
+            "end_frame": end_frames[0].to_dict() if end_frames else None
+        }
+
+        keyframes_path = Path(output_folder) / "keyframes_report.json"
+        with open(keyframes_path, 'w', encoding='utf-8') as f:
+            json.dump(keyframes_report, f, indent=2, ensure_ascii=False)
+
+        print(f"✓ 关键帧报告: {keyframes_path}")
