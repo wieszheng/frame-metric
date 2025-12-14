@@ -143,6 +143,8 @@ class TaskListResponse(BaseModel):
     status: str
     total_videos: int
     completed_videos: int
+    failed_videos: int
+    pending_videos: int
     created_by: str
     created_at: datetime
 

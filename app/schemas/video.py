@@ -16,9 +16,11 @@ class FrameResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    type: str
     url: str
+    frame_type: str
     timestamp: float
+    is_first_candidate: bool
+    is_last_candidate: bool
     frame_number: Optional[int] = None
 
 

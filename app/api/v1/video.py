@@ -6,7 +6,7 @@
 @Time    : 2025/11/29 21:53
 @Software: PyCharm
 """
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List
@@ -15,7 +15,9 @@ import aiofiles
 import os
 from pathlib import Path
 
+from app.crud.task import task_video_crud, task_crud
 from app.database import get_async_db
+from app.models.task import TaskVideo, Task
 from app.models.video import Video, Frame, VideoStatus, FrameType, BatchUpload
 from app.schemas.video import (
     VideoUploadResponse,
@@ -42,9 +44,18 @@ router = APIRouter()
              summary="上传单个视频")
 async def upload_video(
         file: UploadFile = File(..., description="视频文件"),
+        task_id: str = Form(None, description="关联的任务ID（可选）"),
         db: AsyncSession = Depends(get_async_db)
 ):
     """上传单个视频文件"""
+    # 验证任务ID
+    if task_id:
+        task_stmt = select(Task).where(Task.id == task_id)
+        task_result = await db.execute(task_stmt)
+        task = task_result.scalar_one_or_none()
+        if not task:
+            raise HTTPException(status_code=404, detail=f"任务不存在: {task_id}")
+        logger.info(f"Video will be associated with task: {task_id}")
 
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in settings.ALLOWED_EXTENSIONS:
@@ -86,18 +97,33 @@ async def upload_video(
         await db.commit()
         await db.refresh(video)
 
-        task = process_video_frames_full.delay(video_id, temp_path)
+        celery_task = process_video_frames_full.delay(video_id, temp_path)
 
-        video.task_id = task.id
+        video.task_id = celery_task.id
         await db.commit()
 
-        logger.info(f"Video uploaded: {video_id}, task: {task.id}")
+        # 如果有关联任务，添加到任务中
+        if task_id:
+            task_video = TaskVideo(
+                id=str(uuid.uuid4()),
+                task_id=task_id,
+                video_id=video_id,
+            )
+            db.add(task_video)
+            await db.commit()
+            # 更新任务统计
+            from app.crud.task import task_crud
+            await task_crud.update_statistics(db, task_id)
+            await db.commit()
+            logger.info(f"Video {video_id} added to task {task_id}")
+
+        logger.info(f"Video uploaded: {video_id}, task: {celery_task.id}")
 
         return VideoUploadResponse(
             video_id=video_id,
-            task_id=task.id,
+            task_id=celery_task.id,
             status="processing",
-            message="视频上传成功,正在后台处理"
+            message=f"视频上传成功,正在后台处理{' (已关联到任务)' if task_id else ''}"
         )
 
     except HTTPException:
@@ -115,15 +141,33 @@ async def upload_video(
              summary="批量上传视频")
 async def batch_upload_videos(
         files: List[UploadFile] = File(..., description="视频文件列表"),
+        task_id: str = Form(None, description="关联的任务ID（可选）"),
         db: AsyncSession = Depends(get_async_db)
 ):
-    """批量上传视频文件"""
+    """
+    批量上传视频文件并关联到任务
+
+    流程:
+    1. 验证任务ID（如果提供）
+    2. 批量上传视频文件
+    3. 自动关联到任务
+    4. 触发异步处理
+    """
 
     if not files:
         raise HTTPException(status_code=400, detail="没有上传文件")
 
     if len(files) > 20:
         raise HTTPException(status_code=400, detail="单次最多上传20个视频")
+
+    # 验证任务ID
+    if task_id:
+        task_stmt = select(Task).where(Task.id == task_id)
+        task_result = await db.execute(task_stmt)
+        task = task_result.scalar_one_or_none()
+        if not task:
+            raise HTTPException(status_code=404, detail=f"任务不存在: {task_id}")
+        logger.info(f"Batch upload will be associated with task: {task_id}")
 
     batch_id = str(uuid.uuid4())
     batch = BatchUpload(
@@ -178,15 +222,31 @@ async def batch_upload_videos(
             db.add(video)
             await db.commit()
 
-            task = process_video_frames_full.delay(video_id, temp_path)
-            video.task_id = task.id
+
+            celery_task = process_video_frames_full.delay(video_id, temp_path)
+            video.task_id = celery_task.id
             await db.commit()
+
+            # 如果有关联任务，添加到任务中
+            if task_id:
+                task_video = await task_video_crud.add_video_to_task(
+                    db,
+                    task_id=task_id,
+                    video_id=video_id,
+                    notes="自动关联"
+                )
+                # 更新任务统计
+                await task_crud.update_statistics(db, task_id)
+
+                await db.commit()
+                await db.refresh(task_video)
+                logger.info(f"Video {video_id} added to task {task_id}")
 
             upload_results.append(VideoUploadResponse(
                 video_id=video_id,
-                task_id=task.id,
+                task_id=celery_task.id,
                 status="processing",
-                message=f"{file.filename} 上传成功"
+                message=f"{file.filename} 上传成功{' (已关联到任务)' if task_id else ''}"
             ))
 
         except Exception as e:
@@ -202,9 +262,8 @@ async def batch_upload_videos(
         batch_id=batch_id,
         total_count=len(files),
         videos=upload_results,
-        message=f"批量上传完成,共{len(files)}个文件"
+        message=f"批量上传完成,共{len(files)}个文件{' (已关联到任务)' if task_id else ''}"
     )
-
 
 @router.get("/status/{video_id}", response_model=VideoStatusResponse,
             summary="查询视频状态")
@@ -243,9 +302,11 @@ async def get_video_status(
         frames=[
             FrameResponse(
                 id=f.id,
-                type=f.frame_type.value if f.frame_type else "middle",
+                frame_type=f.frame_type.value if f.frame_type else "middle",
                 url=f.minio_url,
                 timestamp=f.timestamp,
+                is_last_candidate=f.is_last_candidate,
+                is_first_candidate=f.is_first_candidate,
                 frame_number=f.frame_number
             ) for f in frames
         ],

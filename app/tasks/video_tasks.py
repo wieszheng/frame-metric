@@ -264,7 +264,9 @@ def process_video_frames_full(self, video_id: str, video_path: str):
 
         # 1. 提取视频信息
         update_video_progress(video_id, 10, "分析视频信息")
+        logger.info(f"视频路径: {video_path}")
         from app.services.video_processor import VideoProcessor
+
         video_info = VideoProcessor.extract_video_info(video_path)
 
         video.duration = video_info["duration"]

@@ -41,6 +41,25 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         """
         self.model = model
 
+    async def get_video_id(
+            self,
+            db: AsyncSession,
+            id: Any
+    ) -> Optional[ModelType]:
+        """
+        根据视频ID查询单个对象
+
+        Args:
+        db: 异步数据库会话
+        id: 主键ID
+
+        Returns:
+        对象实例或None
+        """
+        stmt = select(self.model).where(self.model.video_id == id)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def get(
             self,
             db: AsyncSession,

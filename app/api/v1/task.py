@@ -104,6 +104,8 @@ async def list_tasks(
             status=t.status.value,
             total_videos=t.total_videos,
             completed_videos=t.completed_videos,
+            failed_videos=t.failed_videos,
+            pending_videos=t.total_videos - t.completed_videos - t.failed_videos,
             created_by=t.created_by,
             created_at=t.created_at,
             avg_duration_ms=t.avg_duration_ms
@@ -297,10 +299,10 @@ async def get_video_frames(
     )
 
 
-@router.put("/{task_id}/videos/{task_video_id}/marking", response_model=TaskVideoDetail, summary="更新首尾帧标记")
+@router.put("/{task_id}/videos/{video_id}/marking", response_model=TaskVideoDetail, summary="更新首尾帧标记")
 async def update_frame_marking(
         task_id: str,
-        task_video_id: str,
+        video_id: str,
         marking: FrameMarkingUpdate,
         db: AsyncSession = Depends(get_async_db)
 ):
@@ -312,7 +314,9 @@ async def update_frame_marking(
     - 更新任务统计
     """
     # 查询任务视频
-    task_video = await task_video_crud.get(db, task_video_id)
+
+    task_video = await task_video_crud.get_video_id(db, video_id)
+
     if not task_video or task_video.task_id != task_id:
         raise HTTPException(status_code=404, detail="任务视频不存在")
 
@@ -331,7 +335,7 @@ async def update_frame_marking(
         raise HTTPException(status_code=400, detail="首帧必须在尾帧之前")
 
     # 清除旧标记
-    all_frames_stmt = select(Frame).where(Frame.video_id == task_video.video_id)
+    all_frames_stmt = select(Frame).where(Frame.video_id == task_video.video_id, Frame.frame_type != None)
     all_frames_result = await db.execute(all_frames_stmt)
     all_frames = all_frames_result.scalars().all()
 
@@ -342,14 +346,21 @@ async def update_frame_marking(
     first_frame.frame_type = FrameType.FIRST
     last_frame.frame_type = FrameType.LAST
 
+    # 更新Video信息状态
+    video = await video_crud.get(db, task_video.video_id)
+    if video:
+        video.status = VideoStatus.REVIEWED
+        video.current_step = "已审核"
+
     # 更新TaskVideo信息
     task_video.first_frame_id = first_frame.id
     task_video.last_frame_id = last_frame.id
     task_video.first_frame_timestamp = first_frame.timestamp
     task_video.last_frame_timestamp = last_frame.timestamp
 
+
     # 计算耗时
-    duration_ms = round((last_frame.timestamp - first_frame.timestamp))
+    duration_ms = last_frame.timestamp - first_frame.timestamp
     task_video.duration_ms = duration_ms
 
     # 更新任务统计
@@ -359,7 +370,7 @@ async def update_frame_marking(
     await db.refresh(task_video)
 
     logger.info(
-        f"首尾帧标记已更新: task_video={task_video_id}, "
+        f"首尾帧标记已更新: task_video={video_id}, "
         f"first={first_frame.frame_number}, last={last_frame.frame_number}, "
         f"duration={duration_ms}ms"
     )
