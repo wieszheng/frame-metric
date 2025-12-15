@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: video-api
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app
+      - video_uploads:/tmp/video_uploads
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    depends_on:
+      - redis
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: video-celery-worker
+    restart: always
+    command: celery -A app.tasks.celery_app worker --loglevel=info -Q video_processing
+    volumes:
+      - ./app:/app/app
+      - video_uploads:/tmp/video_uploads
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    depends_on:
+      - redis
+    shm_size: 2g
+
+
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: video-celery-flower
+    restart: always
+    command: celery -A app.tasks.celery_app flower --port=5555 --broker=redis://redis:6379/0
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+      - worker
+volumes:
+  video_uploads:
