@@ -19,6 +19,14 @@ from app.schemas.video import (
     FrameMarkingRequest,
     FrameMarkingResponse
 )
+from app.schemas.project import (
+    ProjectCreate,
+    ProjectUpdate,
+    ProjectResponse,
+    ProjectListResponse,
+    ProjectStatistics,
+    TaskBriefInfo
+)
 
 __all__ = [
     "VideoUploadResponse",
@@ -31,5 +39,11 @@ __all__ = [
     "FrameDetailResponse",
     "VideoReviewResponse",
     "FrameMarkingRequest",
-    "FrameMarkingResponse"
+    "FrameMarkingResponse",
+    "ProjectCreate",
+    "ProjectUpdate",
+    "ProjectResponse",
+    "ProjectListResponse",
+    "ProjectStatistics",
+    "TaskBriefInfo"
 ]

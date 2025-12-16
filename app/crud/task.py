@@ -177,6 +177,16 @@ class TaskVideoCRUD(CRUDBase[TaskVideo, BaseModel, BaseModel]):
             task_video.duration_ms = int((last_frame_timestamp - first_frame_timestamp) * 1000)
             await db.flush()
 
+    async def get_video_id(
+            self,
+            db: AsyncSession,
+            video_id: str
+    ) -> Optional[TaskVideo]:
+        """根据video_id查询任务视频"""
+        stmt = select(TaskVideo).where(TaskVideo.video_id == video_id)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
 
 # 创建全局CRUD实例
 task_crud = TaskCRUD(Task)

@@ -7,5 +7,6 @@
 @Software : PyCharm
 """
 from app.crud.video import video_crud, frame_crud, frame_annotation_crud
+from app.crud.project import project_crud
 
-__all__ = ["video_crud", "frame_crud", "frame_annotation_crud"]
+__all__ = ["video_crud", "frame_crud", "frame_annotation_crud", "project_crud"]

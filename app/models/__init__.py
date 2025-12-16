@@ -16,6 +16,15 @@ from app.models.video import (
     FrameType,
     MarkingMethod
 )
+from app.models.project import (
+    Project,
+    ProjectStatus
+)
+from app.models.task import (
+    Task,
+    TaskVideo,
+    TaskStatus
+)
 
 __all__ = [
     "Base",
@@ -25,5 +34,10 @@ __all__ = [
     "BatchUpload",
     "VideoStatus",
     "FrameType",
-    "MarkingMethod"
+    "MarkingMethod",
+    "Project",
+    "ProjectStatus",
+    "Task",
+    "TaskVideo",
+    "TaskStatus"
 ]

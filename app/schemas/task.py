@@ -9,6 +9,7 @@
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 from datetime import datetime
+import enum
 
 
 class TaskCreate(BaseModel):
@@ -17,6 +18,7 @@ class TaskCreate(BaseModel):
 
     name: str = Field(min_length=1, max_length=200, description="任务名称")
     description: Optional[str] = Field(None, description="任务描述")
+    project_id: Optional[str] = Field(None, description="所属项目ID")
     created_by: str = Field(description="创建人")
 
 
@@ -26,6 +28,7 @@ class TaskUpdate(BaseModel):
 
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     description: Optional[str] = None
+    project_id: Optional[str] = None
     status: Optional[str] = None
 
 
@@ -122,6 +125,7 @@ class TaskResponse(BaseModel):
     name: str
     description: Optional[str]
     status: str
+    project_id: Optional[str]
     created_by: str
     created_at: datetime
     updated_at: datetime
@@ -141,6 +145,7 @@ class TaskListResponse(BaseModel):
     id: str
     name: str
     status: str
+    project_id: Optional[str]
     total_videos: int
     completed_videos: int
     failed_videos: int
@@ -171,3 +176,42 @@ class VideoFramesResponse(BaseModel):
 
     # 所有帧
     frames: List[dict]  # FrameDetailResponse列表
+
+
+class ExportFormat(str, enum.Enum):
+    """导出格式"""
+    CSV = "csv"
+    EXCEL = "excel"
+
+
+class TaskExportData(BaseModel):
+    """任务导出数据行"""
+    model_config = ConfigDict(from_attributes=True)
+    
+    # 任务信息
+    task_name: str
+    
+    # 视频信息
+    video_filename: str
+    sequence: int
+    
+    # 首尾帧时间戳（秒）
+    first_frame_timestamp: Optional[float]
+    last_frame_timestamp: Optional[float]
+    
+    # 耗时信息
+    duration_ms: Optional[int]
+    duration_seconds: Optional[float]
+    
+    # 首尾帧编号
+    first_frame_number: Optional[int]
+    last_frame_number: Optional[int]
+    
+    # 视频属性
+    video_duration: Optional[float]
+    video_fps: Optional[float]
+    video_resolution: Optional[str]
+    
+    # 备注
+    notes: Optional[str]
+    added_at: datetime

@@ -54,3 +54,6 @@ wcwidth==0.2.14
 loguru==0.7.3
 amzqr==0.0.1
 pillow==12.0.0
+matplotlib==3.10.8
+scipy==1.16.3
+pandas==2.3.3

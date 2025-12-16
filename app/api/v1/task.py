@@ -8,7 +8,7 @@
 """
 from datetime import datetime, UTC
 
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List
@@ -27,10 +27,12 @@ from app.schemas.task import (
     TaskVideoDetail,
     TaskStatistics,
     FrameMarkingUpdate,
-    VideoFramesResponse
+    VideoFramesResponse,
+    TaskExportData
 )
 from app.crud.task import task_crud, task_video_crud
 from app.crud.video import video_crud, frame_crud
+
 
 logger = logging.getLogger(__name__)
 
@@ -47,14 +49,23 @@ async def create_task(
 
     - name: 任务名称
     - description: 任务描述（可选）
+    - project_id: 所属项目ID（可选）
     - created_by: 创建人
     """
+    # 如果指定了项目ID，验证项目是否存在
+    if task_in.project_id:
+        from app.crud.project import project_crud
+        project = await project_crud.get(db, task_in.project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="指定的项目不存在")
+    
     task_id = str(uuid.uuid4())
 
     task = Task(
         id=task_id,
         name=task_in.name,
         description=task_in.description,
+        project_id=task_in.project_id,
         created_by=task_in.created_by,
         status=TaskStatus.DRAFT
     )
@@ -63,7 +74,7 @@ async def create_task(
     await db.commit()
     await db.refresh(task)
 
-    logger.info(f"任务创建成功: {task_id}, name={task_in.name}")
+    logger.info(f"任务创建成功: {task_id}, name={task_in.name}, project_id={task_in.project_id}")
 
     return await _build_task_response(db, task)
 
@@ -102,6 +113,7 @@ async def list_tasks(
             id=t.id,
             name=t.name,
             status=t.status.value,
+            project_id=t.project_id,
             total_videos=t.total_videos,
             completed_videos=t.completed_videos,
             failed_videos=t.failed_videos,
@@ -415,6 +427,79 @@ async def complete_task(
     return await _build_task_response(db, task)
 
 
+@router.get("/{task_id}/export", summary="导出任务耗时数据")
+async def export_task_data(
+        task_id: str,
+        db: AsyncSession = Depends(get_async_db)
+):
+    """
+    导出任务的视频首尾帧耗时数据
+    导出内容包括:
+    - 任务信息
+    - 视频文件名和ID
+    - 首尾帧时间戳和编号
+    - 耗时信息（毫秒和秒）
+    - 视频属性（时长、帧率、分辨率）
+    - 备注信息
+    """
+    # 查询任务
+    task = await task_crud.get_with_videos(db, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    
+    # 查询任务的所有视频
+    task_videos = await task_video_crud.get_by_task(db, task_id)
+    
+    if not task_videos:
+        raise HTTPException(status_code=400, detail="任务中没有视频数据")
+    
+    # 准备导出数据
+    export_data = []
+    for tv in task_videos:
+        # 查询视频信息
+        video = await video_crud.get(db, tv.video_id)
+        
+        # 查询首尾帧信息
+        first_frame_number = None
+        last_frame_number = None
+        
+        if tv.first_frame_id:
+            first_frame = await frame_crud.get(db, tv.first_frame_id)
+            if first_frame:
+                first_frame_number = first_frame.frame_number
+        
+        if tv.last_frame_id:
+            last_frame = await frame_crud.get(db, tv.last_frame_id)
+            if last_frame:
+                last_frame_number = last_frame.frame_number
+        
+        # 构建导出数据
+        video_resolution = None
+        if video and video.width and video.height:
+            video_resolution = f"{video.width}x{video.height}"
+
+
+        export_item = TaskExportData(
+            task_name=task.name,
+            video_filename=video.original_filename if video else "未知",
+            sequence=tv.sequence,
+            first_frame_timestamp=tv.first_frame_timestamp,
+            last_frame_timestamp=tv.last_frame_timestamp,
+            duration_ms=tv.duration_ms,
+            duration_seconds=tv.duration_ms / 1000.0 if tv.duration_ms else None,
+            first_frame_number=first_frame_number,
+            last_frame_number=last_frame_number,
+            video_duration=video.duration if video else None,
+            video_fps=video.fps if video else None,
+            video_resolution=video_resolution,
+            notes=tv.notes,
+            added_at=tv.added_at
+        )
+        export_data.append(export_item)
+
+    return export_data
+
+
 # ============================================================
 # 辅助函数
 # ============================================================
@@ -449,6 +534,7 @@ async def _build_task_response(db: AsyncSession, task: Task) -> TaskResponse:
         name=task.name,
         description=task.description,
         status=task.status.value,
+        project_id=task.project_id,
         created_by=task.created_by,
         created_at=task.created_at,
         updated_at=task.updated_at,

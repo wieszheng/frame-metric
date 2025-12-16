@@ -31,6 +31,13 @@ class Task(Base):
     id: Mapped[str] = mapped_column(String(255), primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
+    
+    # 项目关联
+    project_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("projects.id"), 
+        nullable=True, 
+        index=True
+    )
 
     # 状态信息
     status: Mapped[TaskStatus] = mapped_column(
@@ -60,6 +67,7 @@ class Task(Base):
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
     # 关系
+    project: Mapped[Optional["Project"]] = relationship(back_populates="tasks")
     task_videos: Mapped[List["TaskVideo"]] = relationship(
         back_populates="task",
         cascade="all, delete-orphan"
