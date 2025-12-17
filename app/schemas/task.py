@@ -9,6 +9,7 @@
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 from datetime import datetime
+from pydantic import field_serializer
 import enum
 
 
@@ -81,6 +82,11 @@ class TaskVideoDetail(BaseModel):
     first_frame_url: Optional[str] = None
     last_frame_url: Optional[str] = None
 
+    @field_serializer('added_at')
+    def format_datetime(self, value: datetime) -> str:
+        """格式化时间为标准格式"""
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+
     @property
     def duration_seconds(self) -> Optional[float]:
         """耗时（秒）"""
@@ -137,6 +143,13 @@ class TaskResponse(BaseModel):
     # 视频列表
     videos: List[TaskVideoDetail] = []
 
+    @field_serializer('created_at', 'updated_at', 'completed_at')
+    def format_datetime(self, value: Optional[datetime]) -> Optional[str]:
+        """格式化时间为标准格式"""
+        if value is None:
+            return None
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+
 
 class TaskListResponse(BaseModel):
     """任务列表响应"""
@@ -155,6 +168,11 @@ class TaskListResponse(BaseModel):
 
     # 简化的统计
     avg_duration_ms: Optional[int]
+
+    @field_serializer('created_at')
+    def format_datetime(self, value: datetime) -> str:
+        """格式化时间为标准格式"""
+        return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
 class VideoFramesResponse(BaseModel):

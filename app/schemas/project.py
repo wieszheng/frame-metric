@@ -9,6 +9,7 @@
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 from datetime import datetime
+from pydantic import field_serializer
 
 
 class ProjectCreate(BaseModel):
@@ -17,6 +18,7 @@ class ProjectCreate(BaseModel):
 
     name: str = Field(min_length=1, max_length=200, description="项目名称")
     description: Optional[str] = Field(None, description="项目描述")
+    tag: Optional[str] = Field(None, min_length=1, max_length=100, description="项目标签")
     code: Optional[str] = Field(None, min_length=1, max_length=100, description="项目代码/编号")
     owner: str = Field(description="项目负责人")
     members: Optional[str] = Field(None, description="项目成员（JSON格式）")
@@ -31,13 +33,8 @@ class ProjectUpdate(BaseModel):
 
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     description: Optional[str] = None
-    code: Optional[str] = Field(None, min_length=1, max_length=100)
-    status: Optional[str] = None
-    owner: Optional[str] = None
-    members: Optional[str] = None
-    updated_by: Optional[str] = None
-    start_date: Optional[datetime] = None
-    end_date: Optional[datetime] = None
+    tag: Optional[str] = Field(None, min_length=1, max_length=100)
+    members: Optional[str] = Field(None, min_length=1, max_length=100)
 
 
 class ProjectStatistics(BaseModel):
@@ -61,6 +58,11 @@ class TaskBriefInfo(BaseModel):
     completed_videos: int
     created_at: datetime
 
+    @field_serializer('created_at')
+    def format_datetime(self, value: datetime) -> str:
+        """格式化时间为标准格式"""
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+
 
 class ProjectResponse(BaseModel):
     """项目响应"""
@@ -69,10 +71,11 @@ class ProjectResponse(BaseModel):
     id: str
     name: str
     description: Optional[str]
+    tag: Optional[List[str]] = Field(default=None, description="项目标签列表")
     code: Optional[str]
     status: str
     owner: str
-    members: Optional[str]
+    members: Optional[List[str]] = Field(default=None, description="项目成员列表")
     created_by: str
     updated_by: Optional[str]
     created_at: datetime
@@ -87,6 +90,13 @@ class ProjectResponse(BaseModel):
     # 任务列表
     tasks: List[TaskBriefInfo] = []
 
+    @field_serializer('created_at', 'updated_at', 'start_date', 'end_date', 'archived_at')
+    def format_datetime(self, value: Optional[datetime]) -> Optional[str]:
+        """格式化时间为标准格式"""
+        if value is None:
+            return None
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+
 
 class ProjectListResponse(BaseModel):
     """项目列表响应"""
@@ -94,9 +104,12 @@ class ProjectListResponse(BaseModel):
 
     id: str
     name: str
+    description: Optional[str]
+    tag: Optional[List[str]] = Field(default=None, description="项目标签列表")
     code: Optional[str]
     status: str
     owner: str
+    members: Optional[List[str]] = Field(default=None, description="项目成员列表")
     created_by: str
     created_at: datetime
     
@@ -104,3 +117,8 @@ class ProjectListResponse(BaseModel):
     total_tasks: int = 0
     completed_tasks: int = 0
     total_videos: int = 0
+
+    @field_serializer('created_at')
+    def format_datetime(self, value: datetime) -> str:
+        """格式化时间为标准格式"""
+        return value.strftime("%Y-%m-%d %H:%M:%S")

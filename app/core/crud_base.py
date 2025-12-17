@@ -176,6 +176,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             update_data = obj_in.model_dump(exclude_unset=True)
 
         for field, value in update_data.items():
+            print(field, value)
             if hasattr(db_obj, field):
                 setattr(db_obj, field, value)
 

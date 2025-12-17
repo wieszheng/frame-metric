@@ -33,7 +33,6 @@ from app.schemas.task import (
 from app.crud.task import task_crud, task_video_crud
 from app.crud.video import video_crud, frame_crud
 
-
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -58,7 +57,7 @@ async def create_task(
         project = await project_crud.get(db, task_in.project_id)
         if not project:
             raise HTTPException(status_code=404, detail="指定的项目不存在")
-    
+
     task_id = str(uuid.uuid4())
 
     task = Task(
@@ -74,13 +73,15 @@ async def create_task(
     await db.commit()
     await db.refresh(task)
 
-    logger.info(f"任务创建成功: {task_id}, name={task_in.name}, project_id={task_in.project_id}")
+    logger.info(
+        f"任务创建成功: {task_id}, name={task_in.name}, project_id={task_in.project_id}")
 
     return await _build_task_response(db, task)
 
 
 @router.get("", response_model=List[TaskListResponse], summary="获取任务列表")
 async def list_tasks(
+        project_id: str,
         status: str = None,
         skip: int = 0,
         limit: int = 20,
@@ -93,7 +94,9 @@ async def list_tasks(
     - skip: 跳过记录数
     - limit: 返回记录数
     """
-    filters = {}
+    filters = {
+        "project_id": project_id
+    }
     if status:
         try:
             filters["status"] = TaskStatus(status)
@@ -179,7 +182,8 @@ async def delete_task(
     return {"message": "任务已删除", "task_id": task_id}
 
 
-@router.post("/{task_id}/videos", response_model=TaskVideoDetail, summary="添加视频到任务")
+@router.post("/{task_id}/videos", response_model=TaskVideoDetail,
+             summary="添加视频到任务")
 async def add_video_to_task(
         task_id: str,
         video_in: TaskVideoAdd,
@@ -253,7 +257,8 @@ async def remove_video_from_task(
     return {"message": "视频已从任务中移除"}
 
 
-@router.get("/{task_id}/videos/{task_video_id}/frames", response_model=VideoFramesResponse, summary="获取视频所有帧")
+@router.get("/{task_id}/videos/{task_video_id}/frames",
+            response_model=VideoFramesResponse, summary="获取视频所有帧")
 async def get_video_frames(
         task_id: str,
         task_video_id: str,
@@ -280,14 +285,16 @@ async def get_video_frames(
     frames = await frame_crud.get_by_video(db, video.id)
 
     # 找出标记的首尾帧
-    marked_first = next((f for f in frames if f.frame_type == FrameType.FIRST), None)
-    marked_last = next((f for f in frames if f.frame_type == FrameType.LAST), None)
+    marked_first = next((f for f in frames if f.frame_type == FrameType.FIRST),
+                        None)
+    marked_last = next((f for f in frames if f.frame_type == FrameType.LAST),
+                       None)
 
     return VideoFramesResponse(
         video_id=video.id,
         total_frames=video.total_frames or 0,
         duration=video.duration or 0,
-        filename= video.filename,
+        filename=video.filename,
         fps=round(video.fps) or 0,
         width=video.width or 0,
         height=video.height or 0,
@@ -311,7 +318,8 @@ async def get_video_frames(
     )
 
 
-@router.put("/{task_id}/videos/{video_id}/marking", response_model=TaskVideoDetail, summary="更新首尾帧标记")
+@router.put("/{task_id}/videos/{video_id}/marking",
+            response_model=TaskVideoDetail, summary="更新首尾帧标记")
 async def update_frame_marking(
         task_id: str,
         video_id: str,
@@ -347,7 +355,8 @@ async def update_frame_marking(
         raise HTTPException(status_code=400, detail="首帧必须在尾帧之前")
 
     # 清除旧标记
-    all_frames_stmt = select(Frame).where(Frame.video_id == task_video.video_id, Frame.frame_type != None)
+    all_frames_stmt = select(Frame).where(Frame.video_id == task_video.video_id,
+                                          Frame.frame_type != None)
     all_frames_result = await db.execute(all_frames_stmt)
     all_frames = all_frames_result.scalars().all()
 
@@ -370,7 +379,6 @@ async def update_frame_marking(
     task_video.first_frame_timestamp = first_frame.timestamp
     task_video.last_frame_timestamp = last_frame.timestamp
 
-
     # 计算耗时
     duration_ms = last_frame.timestamp - first_frame.timestamp
     task_video.duration_ms = duration_ms
@@ -390,7 +398,8 @@ async def update_frame_marking(
     return await _build_task_video_detail(db, task_video)
 
 
-@router.post("/{task_id}/complete", response_model=TaskResponse, summary="完成任务")
+@router.post("/{task_id}/complete", response_model=TaskResponse,
+             summary="完成任务")
 async def complete_task(
         task_id: str,
         db: AsyncSession = Depends(get_async_db)
@@ -446,38 +455,37 @@ async def export_task_data(
     task = await task_crud.get_with_videos(db, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
-    
+
     # 查询任务的所有视频
     task_videos = await task_video_crud.get_by_task(db, task_id)
-    
+
     if not task_videos:
         raise HTTPException(status_code=400, detail="任务中没有视频数据")
-    
+
     # 准备导出数据
     export_data = []
     for tv in task_videos:
         # 查询视频信息
         video = await video_crud.get(db, tv.video_id)
-        
+
         # 查询首尾帧信息
         first_frame_number = None
         last_frame_number = None
-        
+
         if tv.first_frame_id:
             first_frame = await frame_crud.get(db, tv.first_frame_id)
             if first_frame:
                 first_frame_number = first_frame.frame_number
-        
+
         if tv.last_frame_id:
             last_frame = await frame_crud.get(db, tv.last_frame_id)
             if last_frame:
                 last_frame_number = last_frame.frame_number
-        
+
         # 构建导出数据
         video_resolution = None
         if video and video.width and video.height:
             video_resolution = f"{video.width}x{video.height}"
-
 
         export_item = TaskExportData(
             task_name=task.name,
@@ -544,7 +552,8 @@ async def _build_task_response(db: AsyncSession, task: Task) -> TaskResponse:
     )
 
 
-async def _build_task_video_detail(db: AsyncSession, task_video: TaskVideo) -> TaskVideoDetail:
+async def _build_task_video_detail(db: AsyncSession,
+                                   task_video: TaskVideo) -> TaskVideoDetail:
     """构建任务视频详情"""
     # 查询视频信息
     video = await video_crud.get(db, task_video.video_id)

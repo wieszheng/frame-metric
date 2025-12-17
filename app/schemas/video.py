@@ -6,7 +6,7 @@
 @Time    : 2025/11/29 21:46
 @Software: PyCharm
 """
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_serializer
 from typing import Optional, List
 from datetime import datetime
 
@@ -91,6 +91,11 @@ class VideoStatusResponse(BaseModel):
     current_step: Optional[str] = None
     created_at: datetime
 
+    @field_serializer('created_at')
+    def format_datetime(self, value: datetime) -> str:
+        """格式化时间为标准格式"""
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+
 
 class BatchStatusResponse(BaseModel):
     """批次状态响应"""
@@ -133,6 +138,13 @@ class VideoReviewResponse(BaseModel):
     needs_review: bool = True
     reviewed_by: Optional[str] = None
     reviewed_at: Optional[datetime] = None
+
+    @field_serializer('reviewed_at')
+    def format_datetime(self, value: Optional[datetime]) -> Optional[str]:
+        """格式化时间为标准格式"""
+        if value is None:
+            return None
+        return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
 class FrameMarkingRequest(BaseModel):

@@ -14,6 +14,7 @@ from sqlalchemy import select
 from typing import List, Optional
 import uuid
 import logging
+import json
 
 from app.database import get_async_db
 from app.models.project import Project, ProjectStatus
@@ -43,6 +44,7 @@ async def create_project(
 
     - name: 项目名称
     - description: 项目描述（可选）
+    - tag: 项目标签（可选）
     - code: 项目代码/编号（可选，唯一）
     - owner: 项目负责人
     - members: 项目成员（可选，JSON格式）
@@ -62,6 +64,7 @@ async def create_project(
         id=project_id,
         name=project_in.name,
         description=project_in.description,
+        tag=project_in.tag,
         code=project_in.code,
         owner=project_in.owner,
         members=project_in.members,
@@ -84,53 +87,42 @@ async def create_project(
 async def list_projects(
         status: Optional[str] = Query(None, description="筛选状态"),
         owner: Optional[str] = Query(None, description="筛选负责人"),
-        skip: int = Query(0, ge=0, description="跳过记录数"),
-        limit: int = Query(20, ge=1, le=100, description="返回记录数"),
+        tag: Optional[str] = Query(None, description="筛选标签"),
         db: AsyncSession = Depends(get_async_db)
 ):
     """
-    获取项目列表
+    获取所有项目列表（不分页）
 
     - status: 筛选状态（可选）：active, archived, completed, on_hold
     - owner: 筛选负责人（可选）
-    - skip: 跳过记录数
-    - limit: 返回记录数
+    - tag: 筛选标签（可选）
     """
-    # 根据条件查询
-    if status and owner:
-        # 同时筛选状态和负责人
+    # 构建基础查询
+    stmt = select(Project).order_by(Project.created_at.desc())
+    
+    # 添加筛选条件
+    conditions = []
+    
+    if status:
         try:
             status_enum = ProjectStatus(status)
+            conditions.append(Project.status == status_enum)
         except ValueError:
             raise HTTPException(status_code=400, detail=f"无效的状态: {status}")
-        
-        stmt = (
-            select(Project)
-            .where(Project.status == status_enum, Project.owner == owner)
-            .order_by(Project.created_at.desc())
-            .offset(skip)
-            .limit(limit)
-        )
-        result = await db.execute(stmt)
-        projects = result.scalars().all()
-    elif status:
-        # 仅筛选状态
-        try:
-            status_enum = ProjectStatus(status)
-        except ValueError:
-            raise HTTPException(status_code=400, detail=f"无效的状态: {status}")
-        projects = await project_crud.get_by_status(db, status_enum, skip, limit)
-    elif owner:
-        # 仅筛选负责人
-        projects = await project_crud.get_by_owner(db, owner, skip, limit)
-    else:
-        # 无筛选条件
-        projects = await project_crud.get_multi(
-            db,
-            skip=skip,
-            limit=limit,
-            order_by=Project.created_at.desc()
-        )
+    
+    if owner:
+        conditions.append(Project.owner == owner)
+    
+    if tag:
+        conditions.append(Project.tag == tag)
+    
+    # 应用所有条件
+    if conditions:
+        stmt = stmt.where(*conditions)
+    
+    # 执行查询（不使用分页，返回所有结果）
+    result = await db.execute(stmt)
+    projects = result.scalars().all()
 
     # 构建响应
     response_list = []
@@ -142,9 +134,12 @@ async def list_projects(
             ProjectListResponse(
                 id=p.id,
                 name=p.name,
+                description=p.description,
+                tag=_parse_tag_field(p.tag),
                 code=p.code,
                 status=p.status.value,
                 owner=p.owner,
+                members=_parse_tag_field(p.members),
                 created_by=p.created_by,
                 created_at=p.created_at,
                 total_tasks=stats["total_tasks"],
@@ -196,7 +191,7 @@ async def update_project(
             update_data["status"] = ProjectStatus(update_data["status"])
         except ValueError:
             raise HTTPException(status_code=400, detail=f"无效的状态: {update_data['status']}")
-
+    print(project.__dict__)
     project = await project_crud.update(db, db_obj=project, obj_in=update_data)
     await db.commit()
 
@@ -324,6 +319,39 @@ async def get_project_tasks(
 # 辅助函数
 # ============================================================
 
+def _parse_json_field(json_str: Optional[str]) -> Optional[List[str]]:
+    """解析JSON字符串为列表"""
+    if not json_str:
+        return None
+    try:
+        parsed = json.loads(json_str)
+        if isinstance(parsed, list):
+            return parsed
+        elif isinstance(parsed, str):
+            return [parsed]
+        else:
+            return None
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+def _parse_tag_field(tag_str: Optional[str]) -> Optional[List[str]]:
+    """解析标签字符串为列表（支持逗号分隔或单个标签）"""
+    if not tag_str:
+        return None
+    try:
+        # 尝试解析为JSON
+        parsed = json.loads(tag_str)
+        if isinstance(parsed, list):
+            return parsed
+        elif isinstance(parsed, str):
+            return [parsed]
+    except (json.JSONDecodeError, TypeError):
+        # 如果不是JSON，尝试按逗号分隔
+        if ',' in tag_str:
+            return [tag.strip() for tag in tag_str.split(',') if tag.strip()]
+        else:
+            return [tag_str.strip()] if tag_str.strip() else None
+
 async def _build_project_response(db: AsyncSession, project: Project) -> ProjectResponse:
     """构建项目响应"""
     # 获取统计信息
@@ -358,10 +386,11 @@ async def _build_project_response(db: AsyncSession, project: Project) -> Project
         id=project.id,
         name=project.name,
         description=project.description,
+        tag=_parse_tag_field(project.tag),
         code=project.code,
         status=project.status.value,
         owner=project.owner,
-        members=project.members,
+        members=_parse_tag_field(project.members),
         created_by=project.created_by,
         updated_by=project.updated_by,
         created_at=project.created_at,

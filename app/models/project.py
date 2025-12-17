@@ -31,6 +31,9 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text)
     
+    # 项目标签（可选，用于分类和筛选）
+    tag: Mapped[Optional[str]] = mapped_column(String(100), index=True)
+    
     # 项目代码/编号（可选，用于标识项目）
     code: Mapped[Optional[str]] = mapped_column(String(100), unique=True, index=True)
     
@@ -45,7 +48,7 @@ class Project(Base):
     owner: Mapped[str] = mapped_column(String(255), nullable=False)
     
     # 项目成员（JSON格式存储，或者可以创建单独的关联表）
-    members: Mapped[Optional[str]] = mapped_column(Text)  # 存储JSON格式的成员列表
+    members: Mapped[Optional[str]] = mapped_column(String(100), index=True)
     
     # 用户信息
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
