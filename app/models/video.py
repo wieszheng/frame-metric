@@ -6,19 +6,14 @@
 @Time    : 2025/11/27 00:03
 @Software: PyCharm
 """
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, Float, Integer, DateTime, ForeignKey, \
     Enum as SQLEnum, Boolean, Text
 from datetime import datetime
 from typing import List, Optional
 
 from app.enums import VideoStatus, MarkingMethod, FrameType
-
-
-# 声明式基类
-class Base(DeclarativeBase):
-    """所有模型的基类"""
-    pass
+from app.models.base import Base
 
 
 class Video(Base):

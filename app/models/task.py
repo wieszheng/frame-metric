@@ -7,12 +7,12 @@
 @Software : PyCharm
 """
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Integer, DateTime, ForeignKey, Text, Float,Enum as SQLEnum
+from sqlalchemy import String, Integer, DateTime, ForeignKey, Text, Float, Enum as SQLEnum
 from datetime import datetime
 from typing import List, Optional
 import enum
 
-from app.models.video import Base
+from app.models.base import Base
 
 
 class TaskStatus(str, enum.Enum):

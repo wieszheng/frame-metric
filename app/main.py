@@ -6,7 +6,10 @@
 @Time    : 2025/11/26 23:29
 @Software: PyCharm
 """
-from fastapi import FastAPI
+import os
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
@@ -53,6 +56,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/admin")
+async def admin_page():
+    """脚本模板管理页面"""
+    admin_html_path = os.path.join(os.path.dirname(__file__), "static", "admin.html")
+    if os.path.exists(admin_html_path):
+        return FileResponse(admin_html_path)
+    else:
+        raise HTTPException(status_code=404, detail="Admin page not found")
+
+
 
 # 注册路由
 app.include_router(api_router, prefix="/api/v1")

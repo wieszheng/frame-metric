@@ -7,7 +7,6 @@
 @Software: PyCharm
 """
 from app.models.video import (
-    Base,
     Video,
     Frame,
     FrameAnnotation,
@@ -27,7 +26,6 @@ from app.models.task import (
 )
 
 __all__ = [
-    "Base",
     "Video",
     "Frame",
     "FrameAnnotation",

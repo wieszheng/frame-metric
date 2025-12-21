@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>脚本模板管理</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            background: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .search-box {
+            display: flex;
+            gap: 10px;
+            flex: 1;
+            max-width: 400px;
+        }
+
+        .search-box input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0056b3;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn-outline {
+            background: white;
+            border: 1px solid #ddd;
+            color: #333;
+        }
+
+        .btn-outline:hover {
+            background: #f8f9fa;
+        }
+
+        .script-list {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .script-item {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            transition: background 0.2s;
+        }
+
+        .script-item:hover {
+            background: #f8f9fa;
+        }
+
+        .script-item:last-child {
+            border-bottom: none;
+        }
+
+        .script-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 10px;
+        }
+
+        .script-name {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .script-id {
+            font-size: 12px;
+            color: #999;
+            font-family: monospace;
+        }
+
+        .script-description {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 15px;
+            line-height: 1.5;
+        }
+
+        .script-meta {
+            display: flex;
+            gap: 20px;
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 15px;
+        }
+
+        .script-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .code-preview {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 150px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: #495057;
+            margin-top: 10px;
+        }
+
+        /* 模态框样式 */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            overflow: auto;
+        }
+
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 900px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .close {
+            font-size: 28px;
+            font-weight: bold;
+            color: #999;
+            cursor: pointer;
+            border: none;
+            background: none;
+        }
+
+        .close:hover {
+            color: #333;
+        }
+
+        .modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        .form-group textarea {
+            min-height: 400px;
+            font-family: 'Courier New', monospace;
+            resize: vertical;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 3px rgba(0,123,255,0.1);
+        }
+
+        .form-group small {
+            display: block;
+            margin-top: 5px;
+            color: #666;
+            font-size: 12px;
+        }
+
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid #eee;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .error-message {
+            background: #fee;
+            color: #c33;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .success-message {
+            background: #efe;
+            color: #3c3;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .badge-success {
+            background: #d4edda;
+            color: #155724;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📜 脚本模板管理</h1>
+            <p class="subtitle">管理监控任务使用的脚本模板，支持创建、编辑和删除操作</p>
+        </header>
+
+        <div class="toolbar">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="搜索脚本名称或描述...">
+            </div>
+            <button class="btn btn-primary" onclick="openCreateModal()">+ 创建脚本模板</button>
+        </div>
+
+        <div id="messageContainer"></div>
+
+        <div class="script-list" id="scriptList">
+            <div class="loading">加载中...</div>
+        </div>
+    </div>
+
+    <!-- 创建/编辑模态框 -->
+    <div id="scriptModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="modalTitle">创建脚本模板</h2>
+                <button class="close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="modalMessage"></div>
+                <form id="scriptForm">
+                    <input type="hidden" id="templateId">
+                    <div class="form-group">
+                        <label for="templateName">脚本名称 *</label>
+                        <input type="text" id="templateName" required placeholder="例如：登录流程测试">
+                    </div>
+                    <div class="form-group">
+                        <label for="templateDescription">描述（可选）</label>
+                        <input type="text" id="templateDescription" placeholder="脚本功能描述">
+                    </div>
+                    <div class="form-group">
+                        <label for="templateCode">脚本代码 *</label>
+                        <textarea id="templateCode" required placeholder="// 编写你的脚本代码
+// 可以使用 helpers.log(), helpers.sleep(), helpers.execHdcShell() 等
+// 也可以使用 task 对象访问任务信息
+// 支持完整的 JavaScript 语法：if/else、for/while 循环、函数定义等
+
+helpers.log('脚本开始执行')
+await helpers.sleep(1000)
+const result = await helpers.execHdcShell(`am start -n ${task.packageName}/.MainActivity`)
+helpers.log(`启动结果: ${result}`)"></textarea>
+                        <small>支持完整的 JavaScript/TypeScript 语法</small>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveScript()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = `${window.location.origin}/api/v1/monitor`;
+        let scripts = [];
+        let editingId = null;
+
+        // 页面加载时获取脚本列表
+        window.addEventListener('DOMContentLoaded', () => {
+            loadScripts();
+            setupSearch();
+        });
+
+        // 设置搜索功能
+        function setupSearch() {
+            const searchInput = document.getElementById('searchInput');
+            searchInput.addEventListener('input', (e) => {
+                const query = e.target.value.toLowerCase();
+                filterScripts(query);
+            });
+        }
+
+        // 过滤脚本
+        function filterScripts(query) {
+            const filtered = query 
+                ? scripts.filter(s => 
+                    s.name.toLowerCase().includes(query) || 
+                    (s.description && s.description.toLowerCase().includes(query))
+                  )
+                : scripts;
+            renderScripts(filtered);
+        }
+
+        // 加载脚本列表
+        async function loadScripts() {
+            try {
+                const response = await fetch(`${API_BASE}/script-templates`);
+                if (!response.ok) throw new Error('加载失败');
+                scripts = await response.json();
+                renderScripts(scripts);
+            } catch (error) {
+                showMessage('加载脚本列表失败: ' + error.message, 'error');
+                document.getElementById('scriptList').innerHTML = 
+                    '<div class="empty-state"><div class="empty-state-icon">⚠️</div><p>加载失败，请刷新页面重试</p></div>';
+            }
+        }
+
+        // 渲染脚本列表
+        function renderScripts(scriptList) {
+            const container = document.getElementById('scriptList');
+            
+            if (scriptList.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📝</div>
+                        <p>暂无脚本模板</p>
+                        <button class="btn btn-primary" onclick="openCreateModal()" style="margin-top: 20px;">创建第一个脚本模板</button>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = scriptList.map(script => {
+                const createdAt = new Date(script.createdAt).toLocaleString('zh-CN');
+                const updatedAt = new Date(script.updatedAt).toLocaleString('zh-CN');
+                const codePreview = script.code.length > 200 
+                    ? script.code.substring(0, 200) + '...' 
+                    : script.code;
+
+                return `
+                    <div class="script-item">
+                        <div class="script-header">
+                            <div>
+                                <div class="script-name">${escapeHtml(script.name)}</div>
+                                <div class="script-id">ID: ${escapeHtml(script.id)}</div>
+                            </div>
+                        </div>
+                        ${script.description ? `<div class="script-description">${escapeHtml(script.description)}</div>` : ''}
+                        <div class="script-meta">
+                            <span>创建时间: ${createdAt}</span>
+                            <span>更新时间: ${updatedAt}</span>
+                            <span>代码长度: ${script.code.length} 字符</span>
+                        </div>
+                        <div class="code-preview">${escapeHtml(codePreview)}</div>
+                        <div class="script-actions">
+                            <button class="btn btn-outline" onclick="editScript('${script.id}')">编辑</button>
+                            <button class="btn btn-danger" onclick="deleteScript('${script.id}', '${escapeHtml(script.name)}')">删除</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 打开创建模态框
+        function openCreateModal() {
+            editingId = null;
+            document.getElementById('modalTitle').textContent = '创建脚本模板';
+            document.getElementById('scriptForm').reset();
+            document.getElementById('templateId').value = '';
+            document.getElementById('modalMessage').innerHTML = '';
+            document.getElementById('scriptModal').classList.add('show');
+        }
+
+        // 编辑脚本
+        async function editScript(id) {
+            try {
+                const response = await fetch(`${API_BASE}/script-templates/${id}`);
+                if (!response.ok) throw new Error('加载失败');
+                const script = await response.json();
+                
+                editingId = id;
+                document.getElementById('modalTitle').textContent = '编辑脚本模板';
+                document.getElementById('templateId').value = script.id;
+                document.getElementById('templateName').value = script.name;
+                document.getElementById('templateDescription').value = script.description || '';
+                document.getElementById('templateCode').value = script.code;
+                document.getElementById('modalMessage').innerHTML = '';
+                document.getElementById('scriptModal').classList.add('show');
+            } catch (error) {
+                showMessage('加载脚本失败: ' + error.message, 'error');
+            }
+        }
+
+        // 保存脚本
+        async function saveScript() {
+            const form = document.getElementById('scriptForm');
+            if (!form.checkValidity()) {
+                form.reportValidity();
+                return;
+            }
+
+            const id = document.getElementById('templateId').value;
+            const name = document.getElementById('templateName').value;
+            const description = document.getElementById('templateDescription').value;
+            const code = document.getElementById('templateCode').value;
+
+            const messageDiv = document.getElementById('modalMessage');
+            messageDiv.innerHTML = '<div class="loading">保存中...</div>';
+
+            try {
+                if (editingId) {
+                    // 更新
+                    const response = await fetch(`${API_BASE}/script-templates/${id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name, description, code })
+                    });
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.detail || '更新失败');
+                    }
+                    showMessage('脚本模板更新成功', 'success');
+                } else {
+                    // 创建
+                    const newId = `script-${Date.now()}`;
+                    const response = await fetch(`${API_BASE}/script-templates`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: newId, name, description, code })
+                    });
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.detail || '创建失败');
+                    }
+                    showMessage('脚本模板创建成功', 'success');
+                }
+                
+                closeModal();
+                await loadScripts();
+            } catch (error) {
+                messageDiv.innerHTML = `<div class="error-message">保存失败: ${error.message}</div>`;
+            }
+        }
+
+        // 删除脚本
+        async function deleteScript(id, name) {
+            if (!confirm(`确定要删除脚本模板 "${name}" 吗？\n\n此操作不可恢复！`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/script-templates/${id}`, {
+                    method: 'DELETE'
+                });
+                if (!response.ok) throw new Error('删除失败');
+                showMessage('脚本模板删除成功', 'success');
+                await loadScripts();
+            } catch (error) {
+                showMessage('删除失败: ' + error.message, 'error');
+            }
+        }
+
+        // 关闭模态框
+        function closeModal() {
+            document.getElementById('scriptModal').classList.remove('show');
+        }
+
+        // 显示消息
+        function showMessage(message, type) {
+            const container = document.getElementById('messageContainer');
+            const className = type === 'error' ? 'error-message' : 'success-message';
+            container.innerHTML = `<div class="${className}">${escapeHtml(message)}</div>`;
+            setTimeout(() => {
+                container.innerHTML = '';
+            }, 5000);
+        }
+
+        // HTML 转义
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 点击模态框外部关闭
+        window.onclick = function(event) {
+            const modal = document.getElementById('scriptModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        }
+    </script>
+</body>
+</html>
+
